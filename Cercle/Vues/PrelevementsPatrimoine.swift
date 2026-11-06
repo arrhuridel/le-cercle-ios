@@ -7,6 +7,15 @@ struct PrelevementsView: View {
     let recs: [Suivi.Recurrent]
     @State private var ouvert: Suivi.Recurrent?
 
+    struct Famille { let titre: String; let garder: (Suivi.Recurrent) -> Bool }
+    static let familles: [Famille] = [
+        Famille(titre: "Abonnements") { $0.sc == "Abonnements" },
+        Famille(titre: "Charges fixes") { $0.cat == .besoins },
+        Famille(titre: "Autres dépenses régulières") { $0.cat == .envies && $0.sc != "Abonnements" },
+        Famille(titre: "Épargne programmée") { $0.cat == .epargne },
+        Famille(titre: "Revenus réguliers") { $0.cat == .revenu },
+    ]
+
     var body: some View {
         let actifs = recs.filter(\.actif)
         let compense = actifs.filter { Ref.compensations[$0.sc].map { $0.1 != .epargne } ?? false }.reduce(0) { $0 + $1.parMois }
@@ -24,26 +33,12 @@ struct PrelevementsView: View {
                 let lundi = J.plus(J.aujourdhui, jours: -J.jourSemaine(J.auj))
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
                     ForEach(["L", "M", "M", "J", "V", "S", "D"].indices, id: \.self) { i in Text(["L", "M", "M", "J", "V", "S", "D"][i]).font(.caption2.weight(.semibold)).foregroundStyle(.tertiary) }
-                    ForEach(0..<35, id: \.self) { i in
-                        let d = J.iso(J.plus(lundi, jours: i)), l = ech.filter { $0.date == d }
-                        VStack(spacing: 3) {
-                            Text("\(J.comp(J.date(d)).j)").font(.caption).monospacedDigit().fontWeight(d == J.auj ? .bold : .regular)
-                            HStack(spacing: 2) {
-                                if l.contains(where: { $0.r.cat != .revenu }) { Circle().fill(Color.alerte).frame(width: 5, height: 5) }
-                                if l.contains(where: { $0.r.cat == .revenu }) { Circle().fill(Color.positif).frame(width: 5, height: 5) }
-                            }.frame(height: 5)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 38)
-                        .background(d == J.auj ? Color.primary.opacity(0.15) : Color.primary.opacity(d < J.auj ? 0 : 0.05), in: .rect(cornerRadius: 10))
-                        .opacity(d < J.auj ? 0.35 : 1)
-                    }
+                    ForEach(0..<35, id: \.self) { i in caseJour(J.iso(J.plus(lundi, jours: i)), ech) }
                 }
             }
-            ForEach([("Abonnements", { (r: Suivi.Recurrent) in r.sc == "Abonnements" }), ("Charges fixes", { $0.cat == .besoins }),
-                     ("Autres dépenses régulières", { $0.cat == .envies && $0.sc != "Abonnements" }), ("Épargne programmée", { $0.cat == .epargne }),
-                     ("Revenus réguliers", { $0.cat == .revenu })], id: \.0) { titre, f in
-                let l = actifs.filter(f)
-                if !l.isEmpty { TitreSection(texte: titre); CarteVerre(espacement: 10) { ForEach(l) { ligne($0) } } }
+            ForEach(Self.familles, id: \.titre) { famille in
+                let l = actifs.filter(famille.garder)
+                if !l.isEmpty { TitreSection(texte: famille.titre); CarteVerre(espacement: 10) { ForEach(l) { ligne($0) } } }
             }
             let arretes = recs.filter { !$0.actif }
             if !arretes.isEmpty { TitreSection(texte: "Arrêtés"); CarteVerre(espacement: 10) { ForEach(arretes) { ligne($0) } } }
@@ -61,6 +56,26 @@ struct PrelevementsView: View {
         } message: {
             if let r = ouvert { Text("\(Fmt.eur(r.montant)) \(r.mensuel ? "chaque mois, vers le \(r.jour)" : "chaque semaine") · \(Fmt.eur(r.annuel, 0)) par an") }
         }
+    }
+
+    /// Une case du calendrier : le numéro du jour, un point par échéance (orange = sortie, vert = revenu).
+    private func caseJour(_ d: String, _ ech: [Suivi.Echeance]) -> some View {
+        let l = ech.filter { $0.date == d }
+        let sortie = l.contains { $0.r.cat != .revenu }
+        let entree = l.contains { $0.r.cat == .revenu }
+        let passe = d < J.auj, aujourdhui = d == J.auj
+        let fond: Double = aujourdhui ? 0.15 : (passe ? 0 : 0.05)
+        return VStack(spacing: 3) {
+            Text("\(J.comp(J.date(d)).j)").font(.caption).monospacedDigit().fontWeight(aujourdhui ? .bold : .regular)
+            HStack(spacing: 2) {
+                if sortie { Circle().fill(Color.alerte).frame(width: 5, height: 5) }
+                if entree { Circle().fill(Color.positif).frame(width: 5, height: 5) }
+            }
+            .frame(height: 5)
+        }
+        .frame(maxWidth: .infinity, minHeight: 38)
+        .background(Color.primary.opacity(fond), in: .rect(cornerRadius: 10))
+        .opacity(passe ? 0.35 : 1)
     }
 
     private func ligne(_ r: Suivi.Recurrent) -> some View {

@@ -269,8 +269,10 @@ struct ChargesVue: View {
 
 struct ComparerVue: View {
     @Environment(Magasin.self) private var magasin
-    @State private var a1 = J.debutDuMois(J.aujourdhui), a2 = J.aujourdhui
-    @State private var b1 = J.debutDuMois(J.plus(J.debutDuMois(J.aujourdhui), jours: -1)), b2 = J.plus(J.debutDuMois(J.aujourdhui), jours: -1)
+    @State private var a1 = J.debutDuMois(J.aujourdhui)
+    @State private var a2 = J.aujourdhui
+    @State private var b1 = J.debutDuMois(J.plus(J.debutDuMois(J.aujourdhui), jours: -1))
+    @State private var b2 = J.plus(J.debutDuMois(J.aujourdhui), jours: -1)
     var body: some View {
         let ops = magasin.toutes
         let A = Calc.entre(ops, J.iso(a1), J.iso(a2)), B = Calc.entre(ops, J.iso(b1), J.iso(b2))
@@ -337,7 +339,9 @@ struct AnomaliesVue: View {
 
 struct SimulationsVue: View {
     @Environment(Magasin.self) private var magasin
-    @State private var envies = 0.0, epargne = 0.0, mois = 12.0
+    @State private var envies = 0.0
+    @State private var epargne = 0.0
+    @State private var mois = 12.0
     @State private var abosCoupes: Set<String> = []
     var body: some View {
         let ops = magasin.toutes, m = Calc.mensuel(ops, 5).filter { !$0.mois.enCours }, nb = Double(max(m.count, 1))
