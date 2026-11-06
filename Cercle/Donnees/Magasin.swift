@@ -249,7 +249,9 @@ final class Magasin {
         guard let p = profil else { return nil }
         let g = Groupe(id: UUID().uuidString.lowercased(), nom: nom, creePar: p.id)
         let moi = Participant(id: UUID().uuidString.lowercased(), groupeId: g.id, nom: p.prenom, profilId: p.id)
-        let autres = amis.map { Participant(id: UUID().uuidString.lowercased(), groupeId: g.id, nom: $0, profilId: membres.first { m in m.prenom == $0 && m.id != p.id }?.id) }
+        let autres = amis.map { ami in
+            Participant(id: UUID().uuidString.lowercased(), groupeId: g.id, nom: ami, profilId: membres.first { m in m.prenom == ami && m.id != p.id }?.id)
+        }
         groupes.append(GroupeComplet(groupe: g, participants: [moi] + autres, depenses: [], reglements: []))
         let ok = await envoyer({ c in
             try await c.from("groupes").insert(g).execute()

@@ -3,8 +3,41 @@
 Principe : GitHub fabrique l'app sur un de ses Mac (fichier `Cercle.ipa`), puis Sideloadly, sur ton PC Windows,
 la signe avec ton Apple ID gratuit et l'installe sur ton iPhone branché en USB.
 
-Cette première version ne contient que la structure : barre d'onglets en verre, fond qui dérive, feuille de saisie.
-Elle sert à vérifier que toute la chaîne fonctionne avant d'y mettre les vrais écrans.
+L'app est reliée à la même base Supabase que le site : tu y retrouves tout ton historique, et ce que tu ajoutes
+d'un côté apparaît de l'autre. Sans connexion, elle propose aussi un mode démo (données inventées).
+
+## Partie 0. Relier l'app à ta base (une seule fois)
+
+**A. Donner à GitHub l'adresse de ta base** (l'app la reçoit au moment de la fabrication, elle n'est jamais dans le code)
+
+1. Sur supabase.com, ouvre ton projet, puis **Project Settings**, puis **Data API** : copie la **Project URL**
+   (elle ressemble à `https://xxxx.supabase.co`).
+2. Toujours dans Project Settings, ouvre **API Keys** : copie la **Publishable key** (elle commence par `sb_publishable_`).
+   C'est la clé publique, faite pour être dans une app : les règles de l'étape 2 la rendent inoffensive.
+   Ne prends surtout pas la clé secrète.
+3. Sur github.com, ouvre le dépôt `le-cercle-ios`, puis **Settings**, puis **Secrets and variables**, puis **Actions**.
+4. Clique **New repository secret** : nom `SUPABASE_URL`, valeur = l'adresse copiée à l'étape 1, puis **Add secret**.
+5. Refais-le avec le nom `SUPABASE_PUBLISHABLE_KEY` et la clé copiée à l'étape 2.
+
+**B. Créer ton compte de connexion**
+
+6. Sur supabase.com, ouvre **Authentication**, puis **Users**, puis **Add user**, puis **Create new user**.
+7. Tape ton e-mail et un mot de passe, coche **Auto Confirm User**, puis **Create user**.
+
+**C. Relier ce compte à ton profil du site**
+
+8. Ouvre **SQL Editor**, puis **New query**, colle la ligne ci-dessous en remplaçant `TON_EMAIL` par ton e-mail, puis **Run** :
+
+```sql
+update public.profils set user_id = (select id from auth.users where email = 'TON_EMAIL') where lower(prenom) = 'arthur';
+```
+
+9. Résultat attendu : « Success. 1 row affected ». (0 ligne = l'e-mail ou le prénom ne correspond pas.)
+
+**D. Refabriquer l'app avec l'adresse de ta base**
+
+10. Sur GitHub, onglet **Actions**, puis **Fabriquer l'app (.ipa)**, puis **Run workflow**. Ensuite, Parties 2 et 4 ci-dessous.
+11. Dans l'app, connecte-toi avec l'e-mail et le mot de passe de l'étape 7.
 
 ## Partie 1. Mettre le projet sur GitHub (une seule fois)
 

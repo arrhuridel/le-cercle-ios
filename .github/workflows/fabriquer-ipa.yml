@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Récupérer le code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Choisir Xcode 26
         run: |
@@ -77,7 +77,7 @@ jobs:
           ls -lh Cercle.ipa
 
       - name: Mettre le .ipa à disposition (onglet Actions, rubrique Artifacts)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Cercle-ipa
           path: Cercle.ipa
