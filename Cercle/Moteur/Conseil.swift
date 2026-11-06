@@ -18,18 +18,26 @@ struct Tableau {
 
     init(ops: [Operation], mode: Calc.Mode, perso: (String, String)?, budgetMensuel: Double, objectifEpargne: Double,
          enveloppes env: [Enveloppe], objectifs obj: [Objectif], soldeInitial: Double) {
+        // Calculs dans des variables locales d'abord : Swift interdit de lire `self` avant que tout soit rempli
+        let p = Calc.periode(mode, ops, perso: perso)
+        let dansP = Calc.entre(ops, p.debut, p.fin)
+        var prec: [Operation] = []
+        if let d = p.precDebut { prec = Calc.entre(ops, d, p.precFin ?? d) }
+        let bud = budgetMensuel * p.facteur
+        let solde = Calc.solde(ops, "", jusqua: J.auj, initial: soldeInitial)
+        let r = Suivi.recurrents(ops)
         self.ops = ops
-        per = Calc.periode(mode, ops, perso: perso)
-        opsP = Calc.entre(ops, per.debut, per.fin)
-        opsPrec = per.precDebut.map { Calc.entre(ops, $0, per.precFin ?? $0) } ?? []
-        b = Calc.bilan(opsP)
-        bp = per.precDebut == nil ? nil : Calc.bilan(opsPrec)
-        budget = budgetMensuel * per.facteur
-        self.objectifEpargne = objectifEpargne * per.facteur
-        soldeAuj = Calc.solde(ops, "", jusqua: J.auj, initial: soldeInitial)
-        recs = Suivi.recurrents(ops)
-        prev = Suivi.prevision(opsP, per, soldeAuj: soldeAuj, budget: budget, recs: recs.filter { $0.cat != .virement })
-        enveloppes = Suivi.enveloppes(env, opsP, opsPrec, facteur: per.facteur)
+        per = p
+        opsP = dansP
+        opsPrec = prec
+        b = Calc.bilan(dansP)
+        bp = p.precDebut == nil ? nil : Calc.bilan(prec)
+        budget = bud
+        self.objectifEpargne = objectifEpargne * p.facteur
+        soldeAuj = solde
+        recs = r
+        prev = Suivi.prevision(dansP, p, soldeAuj: solde, budget: bud, recs: r.filter { $0.cat != .virement })
+        enveloppes = Suivi.enveloppes(env, dansP, prec, facteur: p.facteur)
         objectifs = Suivi.objectifs(obj, ops)
     }
 }
