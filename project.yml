@@ -5,17 +5,24 @@ options:
   bundleIdPrefix: fr.lecercle
   deploymentTarget:
     iOS: "26.0"
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: "2.0.0"
 settings:
   base:
-    SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "2"
 targets:
   Cercle:
     type: application
     platform: iOS
     sources:
       - Cercle
+    dependencies:
+      - package: Supabase
+        product: Supabase
     info:
       path: Support/Info.plist
       properties:
@@ -25,7 +32,12 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSFaceIDUsageDescription: "Face ID protège l'accès à tes comptes."
+        NSPhotoLibraryUsageDescription: "Pour lire les montants sur une capture d'écran ou un ticket."
+        NSCameraUsageDescription: "Pour photographier un ticket."
         ITSAppUsesNonExemptEncryption: false
+        # Remplis au moment de la fabrication par le workflow GitHub (secrets) ; vides dans le dépôt
+        SupabaseURL: ""
+        SupabaseKey: ""
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.lecercle.app

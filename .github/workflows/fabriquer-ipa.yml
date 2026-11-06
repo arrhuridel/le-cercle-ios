@@ -14,7 +14,7 @@ concurrency:                # un nouvel envoi annule la fabrication précédente
 jobs:
   ipa:
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v4
@@ -30,6 +30,22 @@ jobs:
       - name: Générer le projet Xcode depuis project.yml
         run: xcodegen generate
 
+      # L'adresse de la base et sa clé publique viennent des secrets du dépôt : elles ne sont jamais dans le code.
+      # (La clé publique est faite pour être dans une app : les règles de la base la rendent inoffensive.)
+      - name: Ajouter l'adresse de la base
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -n "$SUPABASE_URL" ]; then
+            URL="${SUPABASE_URL%/}"; URL="${URL%/rest/v1}"
+            /usr/libexec/PlistBuddy -c "Set :SupabaseURL $URL" Support/Info.plist
+            /usr/libexec/PlistBuddy -c "Set :SupabaseKey $SUPABASE_PUBLISHABLE_KEY" Support/Info.plist
+            echo "Adresse de la base ajoutée."
+          else
+            echo "::warning::Secrets SUPABASE_URL et SUPABASE_PUBLISHABLE_KEY absents : l'app ne proposera que le mode démo."
+          fi
+
       - name: Compiler pour iPhone (sans signature)
         run: |
           set -o pipefail
@@ -40,8 +56,18 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
+            -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            | tail -n 60
+            > build.log 2>&1 || {
+              # Chaque erreur devient une annotation lisible sur la page de la fabrication
+              grep -E "^/.*: error: " build.log | sort -u | head -40 | while IFS= read -r l; do
+                f="${l%%:*}"; reste="${l#*:}"; ligne="${reste%%:*}"
+                echo "::error file=${f#$GITHUB_WORKSPACE/},line=${ligne}::${l##*error: }"
+              done
+              tail -n 80 build.log
+              exit 1
+            }
+          tail -n 15 build.log
 
       - name: Emballer en .ipa
         run: |

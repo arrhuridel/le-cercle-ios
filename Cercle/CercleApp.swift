@@ -1,13 +1,12 @@
 import SwiftUI
 
-/// Point d'entrée de l'app. Pour cette première version, seulement la structure et le style :
-/// les données (Supabase) arriveront à l'étape 3.3.
+/// Point d'entrée de l'app.
 @main
 struct CercleApp: App {
+    @State private var magasin = Magasin()
     var body: some Scene {
         WindowGroup {
-            RacineView()
-                .preferredColorScheme(.dark)   // thème sombre par défaut ; le choix viendra dans Mon espace
+            RacineView().environment(magasin)
         }
     }
 }
