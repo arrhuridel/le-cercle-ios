@@ -12,19 +12,28 @@ final class Magasin {
     var chargement = false
     var erreur: String?
     var horsLigne = false
+    /// Vrai quand la session a expiré : l'app propose de se reconnecter au lieu d'afficher « pas de réseau ».
+    var sessionExpiree = false
 
-    var profil: Profil?
+    var profil: Profil? { didSet { revision += 1 } }
     var membres: [Membre] = []
-    var ops: [Operation] = []
-    var enveloppes: [Enveloppe] = []
-    var objectifs: [Objectif] = []
+    var ops: [Operation] = [] { didSet { revision += 1 } }
+    var enveloppes: [Enveloppe] = [] { didSet { revision += 1 } }
+    var objectifs: [Objectif] = [] { didSet { revision += 1 } }
     var planifiees: [Planifiee] = []
-    var groupes: [GroupeComplet] = []
+    var groupes: [GroupeComplet] = [] { didSet { revision += 1 } }
     var mouvements: [MouvementTitre] = []
     var cours: [Cours] = []
     var regles: [Import.Regle] = []
     var ignores: Set<String> = []
-    var soldesInitiaux: [String: Double] = [:]   // seulement en démo : sur la vraie base, l'historique complet donne le solde
+    var soldesInitiaux: [String: Double] = [:] { didSet { revision += 1 } }   // seulement en démo
+
+    /// Augmente à chaque changement de données : les calculs mis en cache sont refaits seulement à ce moment-là.
+    private(set) var revision = 0
+    @ObservationIgnored private var cacheToutes: (Int, [Operation])?
+    @ObservationIgnored private var cacheLivrets: (Int, Livrets?)?
+    @ObservationIgnored private var cacheTableau: (String, Tableau)?
+    @ObservationIgnored private var rafraichissementEnCours = false
 
     private var client: SupabaseClient?
     let configure: Bool
@@ -42,11 +51,24 @@ final class Magasin {
         ignores = Set(UserDefaults.standard.stringArray(forKey: "ignores") ?? [])
     }
 
-    // MARK: Calculs partagés
+    // MARK: Calculs partagés (mis en cache : avec ~2 500 opérations, les refaire à chaque toucher ralentit l'app)
 
     /// Toutes les opérations, y compris celles calculées à partir des groupes.
-    var toutes: [Operation] { ops + Tricount.operations(groupes, profil: profil?.id) }
+    var toutes: [Operation] {
+        if let c = cacheToutes, c.0 == revision { return c.1 }
+        let t = ops + Tricount.operations(groupes, profil: profil?.id)
+        cacheToutes = (revision, t)
+        return t
+    }
     var comptes: [String] { Calc.comptes(ops) }
+    /// Livrets d'après les relevés enregistrés par le site (même calcul que le site).
+    var livrets: Livrets? {
+        if let c = cacheLivrets, c.0 == revision { return c.1 }
+        let l = Livrets(avoirs: profil?.avoirs, ops: ops)
+        cacheLivrets = (revision, l)
+        return l
+    }
+    var totalLivrets: Double? { livrets?.total(le: J.auj) }
     func nomCompte(_ k: String?) -> String {
         guard let k, !k.isEmpty else { return "Compte courant" }
         if k.hasPrefix("cercle:") { let id = String(k.dropFirst(7)); return "Cercle · " + (groupes.first { $0.id == id }?.groupe.nom ?? "groupe") }
@@ -54,11 +76,30 @@ final class Magasin {
     }
     func solde(_ compte: String) -> Double { Calc.solde(toutes, compte, jusqua: J.auj, initial: soldesInitiaux[compte] ?? 0) }
 
+    /// Période choisie (Résumé), partagée par tous les écrans : Conseiller, Score, notifications…
+    var periodeChoisie: (mode: Calc.Mode, perso: (String, String)) {
+        let d = UserDefaults.standard
+        let mode = Calc.Mode(rawValue: d.string(forKey: "modePeriode") ?? "") ?? .paie
+        return (mode, (d.string(forKey: "persoDebut") ?? J.iso(J.debutDuMois(J.aujourdhui)), d.string(forKey: "persoFin") ?? J.auj))
+    }
+    /// Le tableau du Résumé, calculé une seule fois par état des données et par période.
+    func tableau(mode: Calc.Mode? = nil, perso: (String, String)? = nil) -> Tableau {
+        let p = periodeChoisie, m = mode ?? p.mode, pe = perso ?? p.perso
+        let cle = "\(revision)|\(m.rawValue)|\(pe.0)|\(pe.1)|\(J.auj)"
+        if let c = cacheTableau, c.0 == cle { return c.1 }
+        let t = Tableau(ops: toutes, mode: m, perso: pe, budgetMensuel: profil?.budget ?? 0, objectifEpargne: profil?.objectifEpargne ?? 0,
+                        enveloppes: enveloppes, objectifs: objectifs, soldeInitial: soldesInitiaux[""] ?? 0, livret: totalLivrets)
+        cacheTableau = (cle, t)
+        return t
+    }
+
     // MARK: Connexion
 
     func demarrer() async {
         guard let client else { etat = .deconnecte; return }
-        if (try? await client.auth.session) != nil {
+        // currentSession se lit sans réseau : on ouvre la copie locale tout de suite, même hors ligne,
+        // puis on rafraîchit (le jeton est renouvelé à ce moment-là s'il a expiré).
+        if client.auth.currentSession != nil {
             lireCopieLocale()
             etat = .connecte
             await rafraichir()
@@ -67,13 +108,22 @@ final class Magasin {
         }
     }
 
+    /// Remet l'app à zéro (sortie du mode démo, déconnexion, nouvelle connexion) : rien ne doit passer d'un compte à l'autre.
+    private func viderTout() {
+        profil = nil; ops = []; groupes = []; enveloppes = []; objectifs = []; planifiees = []; mouvements = []; membres = []; cours = []
+        soldesInitiaux = [:]; erreur = nil; horsLigne = false; sessionExpiree = false
+    }
+
     func connecter(email: String, motDePasse: String) async {
         guard let client else { erreur = "L'app n'a pas l'adresse de ta base (secrets GitHub manquants)."; return }
+        guard !chargement else { return }
         chargement = true; erreur = nil
         defer { chargement = false }
         do {
             try await client.auth.signIn(email: email.trimmingCharacters(in: .whitespaces), password: motDePasse)
+            viderTout()
             etat = .connecte
+            chargement = false
             await rafraichir()
         } catch {
             erreur = "Connexion impossible : vérifie l'e-mail et le mot de passe."
@@ -83,11 +133,12 @@ final class Magasin {
     func deconnecter() async {
         if etat == .connecte { try? await client?.auth.signOut() }
         try? FileManager.default.removeItem(at: Self.fichierCopie)
-        profil = nil; ops = []; groupes = []; enveloppes = []; objectifs = []; planifiees = []; mouvements = []; membres = []
+        viderTout()
         etat = .deconnecte
     }
 
     func ouvrirDemo() {
+        viderTout()
         let d = Demo.generer()
         profil = d.profil; ops = d.ops; groupes = d.groupes; enveloppes = d.enveloppes; objectifs = d.objectifs
         mouvements = d.mouvements; membres = [Membre(id: d.profil.id, prenom: d.profil.prenom, visibilite: d.profil.visibilite)]
@@ -99,50 +150,63 @@ final class Magasin {
 
     func rafraichir() async {
         guard etat == .connecte, let client else { return }
-        chargement = true; erreur = nil
-        defer { chargement = false }
+        // Un seul rafraîchissement à la fois : deux en parallèle pouvaient recréer les saisies automatiques en double
+        guard !rafraichissementEnCours else { return }
+        rafraichissementEnCours = true; chargement = true; erreur = nil
+        defer { rafraichissementEnCours = false; chargement = false }
+        do {
+            _ = try await client.auth.session   // renouvelle le jeton ; échoue si la session est révoquée ou expirée
+        } catch {
+            if (error as? URLError) != nil { horsLigne = true; erreur = "Pas de réseau : affichage de la dernière copie enregistrée sur l'iPhone." }
+            else { sessionExpiree = true; erreur = "Ta session a expiré : reconnecte-toi." }
+            return
+        }
         do {
             let profils: [Profil] = try await client.from("profils").select(Profil.colonnes).limit(1).execute().value
             guard let p = profils.first else {
                 erreur = "Ton compte n'est relié à aucun profil du site. Lance la ligne SQL du guide pour le relier."
                 return
             }
-            profil = p
             var toutes: [Operation] = []
             var debut = 0
             while true {   // PostgREST renvoie 1 000 lignes au plus par requête
+                // Tri par date PUIS par identifiant : sans ordre unique, une même ligne pourrait tomber sur deux pages
                 let page: [Operation] = try await client.from("operations").select(Operation.colonnes).eq("profil_id", value: p.id)
-                    .order("date_operation", ascending: false).range(from: debut, to: debut + 999).execute().value
+                    .order("date_operation", ascending: false).order("id").range(from: debut, to: debut + 999).execute().value
                 toutes += page
                 if page.count < 1000 { break }
                 debut += 1000
             }
-            ops = toutes
-            enveloppes = try await client.from("enveloppes").select().execute().value
-            objectifs = try await client.from("objectifs").select().execute().value
-            planifiees = try await client.from("operations_planifiees").select().execute().value
-            mouvements = try await client.from("mouvements_titres").select().execute().value
-            cours = try await client.from("cours").select().order("date_cours", ascending: false).limit(2000).execute().value
-            membres = (try? await client.rpc("membres").execute().value) ?? []
+            var vues = Set<String>()
+            toutes = toutes.filter { vues.insert($0.id).inserted }   // sécurité : jamais deux fois la même opération
+            let env: [Enveloppe] = try await client.from("enveloppes").select().execute().value
+            let obj: [Objectif] = try await client.from("objectifs").select().execute().value
+            let pla: [Planifiee] = try await client.from("operations_planifiees").select().execute().value
+            let mvt: [MouvementTitre] = try await client.from("mouvements_titres").select().execute().value
+            let crs: [Cours] = try await client.from("cours").select().order("date_cours", ascending: false).limit(2000).execute().value
+            let mbr: [Membre] = (try? await client.rpc("membres").execute().value) ?? []
             let gs: [Groupe] = try await client.from("groupes").select().execute().value
-            if gs.isEmpty { groupes = [] } else {
+            var grp: [GroupeComplet] = []
+            if !gs.isEmpty {
                 let ids = gs.map(\.id)
                 let parts: [Participant] = try await client.from("participants").select().in("groupe_id", values: ids).execute().value
                 let deps: [DepensePartagee] = try await client.from("depenses_partagees").select().in("groupe_id", values: ids).execute().value
                 let regs: [Reglement] = try await client.from("reglements").select().in("groupe_id", values: ids).execute().value
-                groupes = gs.map { g in GroupeComplet(groupe: g, participants: parts.filter { $0.groupeId == g.id },
-                                                      depenses: deps.filter { $0.groupeId == g.id }, reglements: regs.filter { $0.groupeId == g.id }) }
+                grp = gs.map { g in GroupeComplet(groupe: g, participants: parts.filter { $0.groupeId == g.id },
+                                                  depenses: deps.filter { $0.groupeId == g.id }, reglements: regs.filter { $0.groupeId == g.id }) }
             }
+            // Tout est lu : on remplace d'un coup (jamais un état à moitié chargé)
+            profil = p; ops = toutes; enveloppes = env; objectifs = obj; planifiees = pla; mouvements = mvt; cours = crs; membres = mbr; groupes = grp
             // Corrections déjà apprises sur le site : elles deviennent des règles de l'app
             for (cle, v) in p.reglesImport ?? [:] where v.count == 2 && !regles.contains(where: { $0.motif == cle }) {
                 regles.append(Import.Regle(motif: cle, sc: v[0], note: v[1]))
             }
-            horsLigne = false
+            horsLigne = false; sessionExpiree = false
             ecrireCopieLocale()
             await appliquerPlanifiees()
         } catch {
-            horsLigne = true
-            erreur = "Pas de connexion à la base : affichage de la dernière copie enregistrée sur l'iPhone."
+            if (error as? URLError) != nil { horsLigne = true; erreur = "Pas de réseau : affichage de la dernière copie enregistrée sur l'iPhone." }
+            else { erreur = "Lecture de la base impossible : \(error.localizedDescription)" }
         }
     }
 
@@ -152,7 +216,10 @@ final class Magasin {
         guard etat == .connecte else { return true }
         guard let client else { return false }
         do { try await action(client); ecrireCopieLocale(); return true }
-        catch { erreur = "Enregistrement impossible : \(error.localizedDescription)"; return false }
+        catch {
+            erreur = (error as? URLError) != nil ? "Pas de réseau : rien n'a été enregistré." : "Enregistrement impossible : \(error.localizedDescription)"
+            return false
+        }
     }
 
     func nouvelleOperation(date: String, sc: String, montant: Double, note: String, compte: String, vers: String?,
@@ -168,73 +235,90 @@ final class Magasin {
         ops.removeAll { $0.id == o.id }
         return false
     }
-    func ajouter(_ l: [Operation]) async {
+    /// Ajoute plusieurs opérations ; en cas d'échec, rien ne reste affiché (et l'écran le dit).
+    @discardableResult
+    func ajouter(_ l: [Operation]) async -> Bool {
+        guard !l.isEmpty else { return true }
         ops.insert(contentsOf: l, at: 0)
-        _ = await envoyer({ try await $0.from("operations").insert(l).execute() })
+        if await envoyer({ try await $0.from("operations").insert(l).execute() }) { return true }
+        let ids = Set(l.map(\.id))
+        ops.removeAll { ids.contains($0.id) }
+        return false
     }
-    func modifier(_ o: Operation) async {
-        guard let i = ops.firstIndex(where: { $0.id == o.id }) else { return }
+    @discardableResult
+    func modifier(_ o: Operation) async -> Bool {
+        guard let i = ops.firstIndex(where: { $0.id == o.id }) else { return false }
         let avant = ops[i]
         ops[i] = o
-        if !(await envoyer({ try await $0.from("operations").update(o).eq("id", value: o.id).execute() })) { ops[i] = avant }
+        if await envoyer({ try await $0.from("operations").update(o).eq("id", value: o.id).execute() }) { return true }
+        // On cherche la ligne à nouveau : la liste a pu être rechargée pendant l'envoi
+        if let j = ops.firstIndex(where: { $0.id == o.id }) { ops[j] = avant }
+        return false
     }
-    func supprimer(_ o: Operation) async {
+    @discardableResult
+    func supprimer(_ o: Operation) async -> Bool {
         if let lien = o.partage {   // opération calculée : on retire l'élément du groupe
-            if let d = lien.depense { await supprimerDepense(groupe: lien.groupe, id: d) }
-            if let r = lien.reglement { await supprimerReglement(groupe: lien.groupe, id: r) }
-            return
+            if let d = lien.depense { return await supprimerDepense(groupe: lien.groupe, id: d) }
+            if let r = lien.reglement { return await supprimerReglement(groupe: lien.groupe, id: r) }
+            return false
         }
-        ops.removeAll { $0.id == o.id }
-        _ = await envoyer({ try await $0.from("operations").delete().eq("id", value: o.id).execute() })
+        guard let i = ops.firstIndex(where: { $0.id == o.id }) else { return false }
+        let avant = ops.remove(at: i)
+        if await envoyer({ try await $0.from("operations").delete().eq("id", value: o.id).execute() }) { return true }
+        ops.insert(avant, at: min(i, ops.count))
+        return false
     }
     func ignorer(_ id: String) { ignores.insert(id); UserDefaults.standard.set(Array(ignores), forKey: "ignores") }
 
     func majProfil(budget: Double? = nil, objectifEpargne: Double? = nil, visibilite: String? = nil) async {
-        guard var p = profil else { return }
+        guard let avant = profil else { return }
+        var p = avant
         var champs: [String: AnyJSON] = [:]
         if let budget { p.budget = budget; champs["budget_mensuel_max"] = .double(budget) }
         if let objectifEpargne { p.objectifEpargne = objectifEpargne; champs["objectif_epargne"] = .double(objectifEpargne) }
         if let visibilite { p.visibilite = visibilite; champs["visibilite"] = .string(visibilite) }
         profil = p
-        _ = await envoyer({ try await $0.from("profils").update(champs).eq("id", value: p.id).execute() })
+        if !(await envoyer({ try await $0.from("profils").update(champs).eq("id", value: p.id).execute() })) { profil = avant }
     }
 
-    func enregistrer(_ e: Enveloppe) async {
-        if let i = enveloppes.firstIndex(where: { $0.id == e.id }) { enveloppes[i] = e } else { enveloppes.append(e) }
-        _ = await envoyer({ try await $0.from("enveloppes").upsert(e).execute() })
+    /// Enregistre un élément simple (remplace ou ajoute), et revient en arrière si la base refuse.
+    private func enregistrerElement<T: Identifiable & Encodable>(_ x: T, dans liste: ReferenceWritableKeyPath<Magasin, [T]>, table: String) async -> Bool where T.ID == String {
+        let avant = self[keyPath: liste]
+        if let i = avant.firstIndex(where: { $0.id == x.id }) { self[keyPath: liste][i] = x } else { self[keyPath: liste].append(x) }
+        if await envoyer({ try await $0.from(table).upsert(x).execute() }) { return true }
+        self[keyPath: liste] = avant
+        return false
     }
-    func supprimer(enveloppe e: Enveloppe) async {
-        enveloppes.removeAll { $0.id == e.id }
-        _ = await envoyer({ try await $0.from("enveloppes").delete().eq("id", value: e.id).execute() })
+    private func supprimerElement<T: Identifiable>(_ id: String, dans liste: ReferenceWritableKeyPath<Magasin, [T]>, table: String) async -> Bool where T.ID == String {
+        let avant = self[keyPath: liste]
+        self[keyPath: liste].removeAll { $0.id == id }
+        if await envoyer({ try await $0.from(table).delete().eq("id", value: id).execute() }) { return true }
+        self[keyPath: liste] = avant
+        return false
     }
-    func enregistrer(_ o: Objectif) async {
-        if let i = objectifs.firstIndex(where: { $0.id == o.id }) { objectifs[i] = o } else { objectifs.append(o) }
-        _ = await envoyer({ try await $0.from("objectifs").upsert(o).execute() })
+    @discardableResult func enregistrer(_ e: Enveloppe) async -> Bool { await enregistrerElement(e, dans: \.enveloppes, table: "enveloppes") }
+    @discardableResult func supprimer(enveloppe e: Enveloppe) async -> Bool { await supprimerElement(e.id, dans: \Magasin.enveloppes, table: "enveloppes") }
+    @discardableResult func enregistrer(_ o: Objectif) async -> Bool { await enregistrerElement(o, dans: \.objectifs, table: "objectifs") }
+    @discardableResult func supprimer(objectif o: Objectif) async -> Bool { await supprimerElement(o.id, dans: \Magasin.objectifs, table: "objectifs") }
+    @discardableResult func enregistrer(_ p: Planifiee) async -> Bool {
+        let ok = await enregistrerElement(p, dans: \.planifiees, table: "operations_planifiees")
+        if ok { await appliquerPlanifiees() }
+        return ok
     }
-    func supprimer(objectif o: Objectif) async {
-        objectifs.removeAll { $0.id == o.id }
-        _ = await envoyer({ try await $0.from("objectifs").delete().eq("id", value: o.id).execute() })
-    }
-    func enregistrer(_ p: Planifiee) async {
-        if let i = planifiees.firstIndex(where: { $0.id == p.id }) { planifiees[i] = p } else { planifiees.append(p) }
-        _ = await envoyer({ try await $0.from("operations_planifiees").upsert(p).execute() })
-        await appliquerPlanifiees()
-    }
-    func enregistrer(_ m: MouvementTitre) async {
-        mouvements.append(m)
-        _ = await envoyer({ try await $0.from("mouvements_titres").insert(m).execute() })
-    }
+    @discardableResult func enregistrer(_ m: MouvementTitre) async -> Bool { await enregistrerElement(m, dans: \.mouvements, table: "mouvements_titres") }
 
     /// Crée les saisies automatiques arrivées à échéance (une par mois et par règle).
+    /// Une saisie n'est pas recréée si le mois contient déjà une opération du même thème au montant proche (±20 %),
+    /// par exemple la vraie ligne importée du relevé : sinon la facture serait comptée deux fois.
     func appliquerPlanifiees() async {
         var nouvelles: [Operation] = []
         for p in planifiees where p.actif {
             var d = J.date(p.depuis)
             var k = 0
             while J.iso(d) <= J.auj && k < 24 {
-                let mois = String(J.iso(d).prefix(7)), note = p.note
-                let existe = ops.contains { $0.sc == p.sc && $0.montant == p.montant && $0.note == note && $0.date.hasPrefix(mois) }
-                if !existe { nouvelles.append(nouvelleOperation(date: J.iso(d), sc: p.sc, montant: p.montant, note: note, compte: p.compte, vers: p.vers, source: "auto")) }
+                let mois = String(J.iso(d).prefix(7))
+                let existe = (ops + nouvelles).contains { $0.sc == p.sc && $0.date.hasPrefix(mois) && abs($0.montant - p.montant) <= max(p.montant * 0.2, 1) }
+                if !existe { nouvelles.append(nouvelleOperation(date: J.iso(d), sc: p.sc, montant: p.montant, note: p.note, compte: p.compte, vers: p.vers, source: "auto")) }
                 k += 1
                 let c = J.comp(d)
                 d = J.faire(c.a, c.m + 1, p.jour)
@@ -260,25 +344,37 @@ final class Magasin {
         if !ok { groupes.removeAll { $0.id == g.id }; return nil }
         return g.id
     }
-    func ajouter(depense d: DepensePartagee) async {
-        guard let i = groupes.firstIndex(where: { $0.id == d.groupeId }) else { return }
+    @discardableResult
+    func ajouter(depense d: DepensePartagee) async -> Bool {
+        guard let i = groupes.firstIndex(where: { $0.id == d.groupeId }), !groupes[i].depenses.contains(where: { $0.id == d.id }) else { return false }
         groupes[i].depenses.append(d)
-        _ = await envoyer({ try await $0.from("depenses_partagees").insert(d).execute() })
+        if await envoyer({ try await $0.from("depenses_partagees").insert(d).execute() }) { return true }
+        if let j = groupes.firstIndex(where: { $0.id == d.groupeId }) { groupes[j].depenses.removeAll { $0.id == d.id } }
+        return false
     }
-    func ajouter(reglement r: Reglement) async {
-        guard let i = groupes.firstIndex(where: { $0.id == r.groupeId }) else { return }
+    @discardableResult
+    func ajouter(reglement r: Reglement) async -> Bool {
+        guard let i = groupes.firstIndex(where: { $0.id == r.groupeId }) else { return false }
         groupes[i].reglements.append(r)
-        _ = await envoyer({ try await $0.from("reglements").insert(r).execute() })
+        if await envoyer({ try await $0.from("reglements").insert(r).execute() }) { return true }
+        if let j = groupes.firstIndex(where: { $0.id == r.groupeId }) { groupes[j].reglements.removeAll { $0.id == r.id } }
+        return false
     }
-    func supprimerDepense(groupe: String, id: String) async {
-        guard let i = groupes.firstIndex(where: { $0.id == groupe }) else { return }
+    @discardableResult
+    func supprimerDepense(groupe: String, id: String) async -> Bool {
+        guard let i = groupes.firstIndex(where: { $0.id == groupe }), let d = groupes[i].depenses.first(where: { $0.id == id }) else { return false }
         groupes[i].depenses.removeAll { $0.id == id }
-        _ = await envoyer({ try await $0.from("depenses_partagees").delete().eq("id", value: id).execute() })
+        if await envoyer({ try await $0.from("depenses_partagees").delete().eq("id", value: id).execute() }) { return true }
+        if let j = groupes.firstIndex(where: { $0.id == groupe }) { groupes[j].depenses.append(d) }
+        return false
     }
-    func supprimerReglement(groupe: String, id: String) async {
-        guard let i = groupes.firstIndex(where: { $0.id == groupe }) else { return }
+    @discardableResult
+    func supprimerReglement(groupe: String, id: String) async -> Bool {
+        guard let i = groupes.firstIndex(where: { $0.id == groupe }), let r = groupes[i].reglements.first(where: { $0.id == id }) else { return false }
         groupes[i].reglements.removeAll { $0.id == id }
-        _ = await envoyer({ try await $0.from("reglements").delete().eq("id", value: id).execute() })
+        if await envoyer({ try await $0.from("reglements").delete().eq("id", value: id).execute() }) { return true }
+        if let j = groupes.firstIndex(where: { $0.id == groupe }) { groupes[j].reglements.append(r) }
+        return false
     }
 
     // MARK: Règles de catégorisation
@@ -300,13 +396,16 @@ final class Magasin {
         try? FileManager.default.createDirectory(at: dossier, withIntermediateDirectories: true)
         return dossier.appendingPathComponent("copie.json")
     }
+    /// Tout le contenu, pour la copie locale et la sauvegarde.
+    var instantane: Instantane {
+        Instantane(profil: profil, membres: membres, ops: ops, enveloppes: enveloppes, objectifs: objectifs, planifiees: planifiees,
+                   groupes: groupes.map(\.groupe), participants: groupes.flatMap(\.participants), depenses: groupes.flatMap(\.depenses),
+                   reglements: groupes.flatMap(\.reglements), mouvements: mouvements, cours: cours, misAJour: Date())
+    }
     private func ecrireCopieLocale() {
         guard etat == .connecte else { return }
-        let i = Instantane(profil: profil, membres: membres, ops: ops, enveloppes: enveloppes, objectifs: objectifs, planifiees: planifiees,
-                           groupes: groupes.map(\.groupe), participants: groupes.flatMap(\.participants), depenses: groupes.flatMap(\.depenses),
-                           reglements: groupes.flatMap(\.reglements), mouvements: mouvements, cours: cours, misAJour: Date())
         // Protection iOS : le fichier est chiffré et illisible tant que l'iPhone est verrouillé
-        try? JSONEncoder().encode(i).write(to: Self.fichierCopie, options: [.atomic, .completeFileProtection])
+        try? JSONEncoder().encode(instantane).write(to: Self.fichierCopie, options: [.atomic, .completeFileProtection])
     }
     private func lireCopieLocale() {
         guard let d = try? Data(contentsOf: Self.fichierCopie), let i = try? JSONDecoder().decode(Instantane.self, from: d) else { return }
@@ -314,14 +413,5 @@ final class Magasin {
         mouvements = i.mouvements; cours = i.cours
         groupes = i.groupes.map { g in GroupeComplet(groupe: g, participants: i.participants.filter { $0.groupeId == g.id },
                                                      depenses: i.depenses.filter { $0.groupeId == g.id }, reglements: i.reglements.filter { $0.groupeId == g.id }) }
-    }
-
-    /// Sauvegarde complète en JSON (bouton de Mon espace).
-    func exportJSON() -> Data {
-        let i = Instantane(profil: profil, membres: membres, ops: ops, enveloppes: enveloppes, objectifs: objectifs, planifiees: planifiees,
-                           groupes: groupes.map(\.groupe), participants: groupes.flatMap(\.participants), depenses: groupes.flatMap(\.depenses),
-                           reglements: groupes.flatMap(\.reglements), mouvements: mouvements, cours: cours, misAJour: Date())
-        let e = JSONEncoder(); e.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return (try? e.encode(i)) ?? Data()
     }
 }

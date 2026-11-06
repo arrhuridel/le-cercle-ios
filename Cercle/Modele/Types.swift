@@ -43,11 +43,29 @@ struct Profil: Codable, Hashable {
     var objectifEpargne: Double
     /// Corrections retenues lors des imports sur le site : libellé nettoyé → [thème, note]
     var reglesImport: [String: [String]]?
+    /// Relevés des livrets enregistrés par le site : nom du livret → lignes [date, montant, solde, libellé]
+    var avoirs: [String: Avoir]?
     enum CodingKeys: String, CodingKey {
-        case id, prenom, visibilite
+        case id, prenom, visibilite, avoirs
         case budget = "budget_mensuel_max", objectifEpargne = "objectif_epargne", reglesImport = "regles_import"
     }
-    static let colonnes = "id,prenom,visibilite,budget_mensuel_max,objectif_epargne,regles_import"
+    static let colonnes = "id,prenom,visibilite,budget_mensuel_max,objectif_epargne,regles_import,avoirs"
+
+    init(id: String, prenom: String, visibilite: String, budget: Double, objectifEpargne: Double, reglesImport: [String: [String]]? = nil, avoirs: [String: Avoir]? = nil) {
+        self.id = id; self.prenom = prenom; self.visibilite = visibilite; self.budget = budget; self.objectifEpargne = objectifEpargne
+        self.reglesImport = reglesImport; self.avoirs = avoirs
+    }
+    /// Lecture tolérante : des règles ou des relevés mal formés ne doivent jamais empêcher d'ouvrir le profil.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        prenom = try c.decode(String.self, forKey: .prenom)
+        visibilite = (try? c.decode(String.self, forKey: .visibilite)) ?? "prive"
+        budget = (try? c.decode(Double.self, forKey: .budget)) ?? 0
+        objectifEpargne = (try? c.decode(Double.self, forKey: .objectifEpargne)) ?? 0
+        reglesImport = try? c.decodeIfPresent([String: [String]].self, forKey: .reglesImport)
+        avoirs = try? c.decodeIfPresent([String: Avoir].self, forKey: .avoirs)
+    }
 }
 
 struct Membre: Codable, Hashable, Identifiable {

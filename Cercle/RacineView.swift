@@ -15,6 +15,8 @@ struct RacineView: View {
     @State private var onglet: Onglet = .resume
     @State private var saisieOuverte = false
     @State private var verrouille = false
+    @State private var authEnCours = false     // une seule demande Face ID à la fois
+    @State private var revenuDuFond = false    // on ne redemande Face ID tout seul qu'en revenant de l'arrière-plan
 
     var body: some View {
         Group {
@@ -25,11 +27,17 @@ struct RacineView: View {
             }
         }
         .preferredColorScheme(theme == "clair" ? .light : theme == "auto" ? nil : .dark)
-        .overlay { if verrouille { verrou } }
-        .task { await magasin.demarrer(); if faceId { verrouille = true; deverrouiller() } }
+        // Verrou, et cache dans le sélecteur d'apps (état « inactif ») pour que les montants ne s'y voient pas
+        .overlay { if verrouille || (faceId && phase != .active && !authEnCours) { verrou } }
+        .task {
+            if faceId { verrouille = true }          // verrouillé AVANT d'afficher les données
+            await magasin.demarrer()
+            if faceId { deverrouiller() }
+        }
         .onChange(of: phase) { _, p in
-            if p == .background && faceId { verrouille = true }
-            if p == .active && verrouille { deverrouiller() }
+            if p == .background && faceId { verrouille = true; revenuDuFond = true }
+            // La fenêtre Face ID rend l'app « inactive » puis « active » : sans ce drapeau, un refus relancerait Face ID en boucle
+            if p == .active && verrouille && revenuDuFond { revenuDuFond = false; deverrouiller() }
         }
     }
 
@@ -57,17 +65,31 @@ struct RacineView: View {
         VStack(spacing: 18) {
             Image(systemName: "faceid").font(.system(size: 44, weight: .light)).frame(width: 86, height: 86).glassEffect(.regular, in: .rect(cornerRadius: 26))
             Text("Le Cercle est verrouillé").font(.title2.weight(.semibold))
-            Button("Déverrouiller") { deverrouiller() }
-                .font(.headline).padding(.horizontal, 40).padding(.vertical, 14).glassEffect(.regular.interactive(), in: .capsule)
+            if verrouille {
+                Button { deverrouiller() } label: {
+                    Text("Déverrouiller").font(.headline).padding(.horizontal, 40).padding(.vertical, 14).contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .disabled(authEnCours)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.ultraThinMaterial)
     }
 
     private func deverrouiller() {
+        guard !authEnCours else { return }
         let c = LAContext()
+        var erreur: NSError?
+        // Ni Face ID ni code configurés : on ne bloque pas l'accès à ses propres données
+        guard c.canEvaluatePolicy(.deviceOwnerAuthentication, error: &erreur) else { verrouille = false; return }
+        authEnCours = true
         c.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Déverrouiller Le Cercle") { ok, _ in
-            Task { @MainActor in if ok { withAnimation { verrouille = false } } }
+            Task { @MainActor in
+                authEnCours = false
+                if ok { withAnimation { verrouille = false } }
+            }
         }
     }
 }
@@ -97,13 +119,15 @@ struct ConnexionView: View {
                     .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             Button {
-                Task { await magasin.connecter(email: email, motDePasse: motDePasse) }
+                guard !magasin.chargement else { return }
+                Task { await magasin.connecter(email: email.trimmingCharacters(in: .whitespaces), motDePasse: motDePasse) }
             } label: {
                 Group { if magasin.chargement { ProgressView() } else { Text("Se connecter").font(.headline) } }
-                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .frame(maxWidth: .infinity).padding(.vertical, 14).contentShape(.capsule)   // tout le bouton réagit
             }
+            .buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: .capsule)
-            .disabled(email.isEmpty || motDePasse.isEmpty || !magasin.configure)
+            .disabled(email.isEmpty || motDePasse.isEmpty || !magasin.configure || magasin.chargement)
             Spacer()
             Button("Essayer avec des données d'exemple") { magasin.ouvrirDemo() }.font(.subheadline).tint(.secondary)
         }

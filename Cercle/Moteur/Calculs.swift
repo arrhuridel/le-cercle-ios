@@ -91,8 +91,9 @@ enum Calc {
     }
 
     static func source(_ o: Operation) -> String {
-        let s = o.note.components(separatedBy: " · ").first?.trimmingCharacters(in: .whitespaces) ?? ""
-        return s.isEmpty ? "Salaire" : s
+        guard o.sc == "Salaire" else { return o.sc }
+        let nom = Analyse.marchand(o).replacingOccurrences(of: #"\s*\(.*\)$"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        return nom.isEmpty ? "Salaire" : nom
     }
     /// Règle 1 : seules les paies du salaire principal (le plus gros sur 6 mois) ouvrent un cycle.
     static func joursDePaie(_ ops: [Operation]) -> [String] {

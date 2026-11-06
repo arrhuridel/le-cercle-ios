@@ -96,7 +96,7 @@ enum Import {
         let cDeb = col { $0.hasPrefix("debit") }, cCre = col { $0.hasPrefix("credit") }, cMnt = col { $0.hasPrefix("montant") || $0.contains("amount") || $0 == "valeur" }
         guard let cL = cLib, cMnt != nil || cDeb != nil || cCre != nil else { throw ErreurImport.colonnes }
         func nombre(_ t: String) -> Double {
-            var s = t.replacingOccurrences(of: "\u{00a0}", with: "").replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "€", with: "")
+            var s = t.filter { !$0.isWhitespace && $0 != "€" }
             if s.contains(",") && s.contains(".") { s = s.lastIndex(of: ",")! > s.lastIndex(of: ".")! ? s.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".") : s.replacingOccurrences(of: ",", with: "") }
             else { s = s.replacingOccurrences(of: ",", with: ".") }
             return Double(s) ?? 0

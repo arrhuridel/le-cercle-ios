@@ -89,6 +89,7 @@ struct PrelevementsView: View {
                 Spacer()
                 VStack(alignment: .trailing) { Text(Fmt.eur(r.montant)).monospacedDigit().fontWeight(.semibold); Text("\(Fmt.eur(r.annuel, 0)) par an").font(.caption).foregroundStyle(.secondary) }
             }
+            .contentShape(Rectangle())   // toute la ligne réagit, pas seulement le texte
         }
         .buttonStyle(.plain)
     }
@@ -107,7 +108,9 @@ struct PatrimoineView: View {
     var body: some View {
         let ops = magasin.toutes
         let comptes = magasin.comptes.reduce(0) { $0 + magasin.solde($1) }
-        let livrets = max(ops.map(Calc.compense).filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }, 0)
+        // Livrets : soldes réels des relevés (comme le site) ; à défaut, la somme des virements
+        let lv = magasin.livrets
+        let livrets = lv?.total(le: J.auj) ?? max(ops.map(Calc.compense).filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }, 0)
         let verse = ops.map(Calc.compense).filter { $0.sc == "Investissement" }.reduce(0) { $0 + $1.montant }
         let titres = Dictionary(grouping: magasin.mouvements, by: \.titre)
         let positions = titres.map { t, l -> (titre: String, parts: Double, investi: Double, valeur: Double?) in
@@ -128,14 +131,28 @@ struct PatrimoineView: View {
                 let points = stride(from: 180, through: 0, by: -6).map { k -> (Date, Double) in
                     let d = J.plus(J.auj, jours: -k)
                     let c = magasin.comptes.reduce(0) { $0 + Calc.solde(ops, $1, jusqua: d, initial: magasin.soldesInitiaux[$1] ?? 0) }
-                    let e = Calc.entre(ops, "2000-01-01", d).map(Calc.compense).filter { $0.cat == .epargne }.reduce(0) { $0 + $1.montant }
-                    return (J.date(d), c + e)
+                    let avant = Calc.entre(ops, "2000-01-01", d).map(Calc.compense).filter { $0.cat == .epargne }
+                    let autres = avant.filter { $0.sc != "Livret" }.reduce(0) { $0 + $1.montant }
+                    let livret = lv?.total(le: d) ?? avant.filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }
+                    return (J.date(d), c + livret + autres)
                 }
                 Chart(points, id: \.0) { p in
                     AreaMark(x: .value("Jour", p.0), y: .value("€", p.1)).foregroundStyle(.linearGradient(colors: [.primary.opacity(0.2), .clear], startPoint: .top, endPoint: .bottom))
                     LineMark(x: .value("Jour", p.0), y: .value("€", p.1))
                 }.frame(height: 160)
-                Text("Comptes + épargne nette versée (les placements à leur montant versé).").font(.caption).foregroundStyle(.secondary)
+                Text("Comptes + livrets (soldes des relevés) + placements à leur montant versé.").font(.caption).foregroundStyle(.secondary)
+            }
+            TitreSection(texte: "Livrets")
+            CarteVerre(espacement: 10) {
+                if let lv {
+                    ForEach(lv.noms, id: \.self) { n in
+                        HStack { Pastille(symbole: "banknote.fill", teinte: .positif); Text(n); Spacer(); Text(Fmt.eur(lv.solde(n, le: J.auj))).monospacedDigit().fontWeight(.semibold) }
+                    }
+                    if let i = lv.interets.last { Text("Intérêts \(i.annee) : \(Fmt.eur(i.montant))").font(.footnote).foregroundStyle(.secondary) }
+                    Text("D'après tes relevés jusqu'au \(J.court(lv.finReleves)), puis tes virements depuis le compte courant.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Aucun relevé de livret enregistré : le solde affiché est la somme de tes virements, qui ignore l'argent d'avant ton historique.").font(.footnote).foregroundStyle(.secondary)
+                }
             }
             TitreSection(texte: "Placements", action: ("Ajouter un mouvement", { ajoutMouvement = true }))
             CarteVerre(espacement: 10) {

@@ -117,6 +117,8 @@ struct LigneOperation: View {
             Text(montant.texte).monospacedDigit().fontWeight(.semibold).foregroundStyle(montant.couleur)
         }
         .padding(.vertical, 2)
+        // Toute la ligne réagit au toucher, pas seulement le texte (sinon l'espace vide au milieu ne fait rien)
+        .contentShape(Rectangle())
     }
     private var sousTitre: String {
         op.cat == .virement ? "\(magasin.nomCompte(op.compte)) → \(magasin.nomCompte(op.vers))" : op.sc + (op.compte.isEmpty ? "" : " · " + magasin.nomCompte(op.compte))

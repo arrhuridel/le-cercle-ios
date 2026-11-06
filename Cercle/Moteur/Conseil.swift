@@ -15,9 +15,12 @@ struct Tableau {
     var prev: Suivi.Prevision
     var enveloppes: [Suivi.SuiviEnveloppe]
     var objectifs: [Suivi.SuiviObjectif]
+    /// Solde réel des livrets d'après les relevés (nil si le site n'en a pas enregistré)
+    var livret: Double?
 
     init(ops: [Operation], mode: Calc.Mode, perso: (String, String)?, budgetMensuel: Double, objectifEpargne: Double,
-         enveloppes env: [Enveloppe], objectifs obj: [Objectif], soldeInitial: Double) {
+         enveloppes env: [Enveloppe], objectifs obj: [Objectif], soldeInitial: Double, livret: Double? = nil) {
+        self.livret = livret
         // Calculs dans des variables locales d'abord : Swift interdit de lire `self` avant que tout soit rempli
         let p = Calc.periode(mode, ops, perso: perso)
         let dansP = Calc.entre(ops, p.debut, p.fin)
@@ -38,7 +41,7 @@ struct Tableau {
         recs = r
         prev = Suivi.prevision(dansP, p, soldeAuj: solde, budget: bud, recs: r.filter { $0.cat != .virement })
         enveloppes = Suivi.enveloppes(env, dansP, prec, facteur: p.facteur)
-        objectifs = Suivi.objectifs(obj, ops)
+        objectifs = Suivi.objectifs(obj, ops, livret: livret)
     }
 }
 
@@ -142,8 +145,8 @@ enum Conseil {
         let rev = mois.reduce(0) { $0 + $1.b.rev }, dep = mois.reduce(0) { $0 + $1.b.dep }, epa = mois.reduce(0) { $0 + $1.b.epa }
         let depMoy = dep / nb, taux = rev > 0 ? epa / rev : 0
         let respectes = mois.filter { $0.b.dep <= budgetMensuel }.count
-        let livret = t.ops.map(Calc.compense).filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }
-        let reserve = (t.soldeAuj + max(livret, 0)) / max(depMoy, 1)
+        let livret = t.livret ?? max(t.ops.map(Calc.compense).filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }, 0)
+        let reserve = (t.soldeAuj + livret) / max(depMoy, 1)
         let fixes = mois.reduce(0) { r, m in r + Calc.entre(t.ops, m.mois.debut, m.mois.fin).map(Calc.compense).filter { $0.cat.estDepense && Ref.chargesFixes.contains($0.sc) }.reduce(0) { $0 + $1.montant } } / nb
         let partFixes = rev > 0 ? fixes / (rev / nb) : 1
         let ecart = sqrt(mois.reduce(0) { $0 + pow($1.b.dep - depMoy, 2) } / nb), cv = depMoy > 0 ? ecart / depMoy : 1
@@ -185,7 +188,8 @@ enum Conseil {
 
 enum Analyse {
     static func marchand(_ o: Operation) -> String {
-        let m = o.note.components(separatedBy: " · ").first?.trimmingCharacters(in: .whitespaces) ?? ""
-        return m.isEmpty ? o.sc : m
+        let brut = o.note.components(separatedBy: " · ").first ?? ""
+        let m = brut.replacingOccurrences(of: #"\s*\(\d+ achats\)$"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        return m.isEmpty ? o.sc : m.prefix(1).uppercased() + m.dropFirst()
     }
 }

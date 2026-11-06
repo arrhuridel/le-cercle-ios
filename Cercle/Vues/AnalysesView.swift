@@ -22,6 +22,7 @@ struct AnalysesView: View {
     @Environment(Magasin.self) private var magasin
     @State private var n = 6
     @State private var moisChoisi: String?
+    @State private var moisGarde: String?   // dernier mois touché : le détail reste affiché après avoir levé le doigt
 
     var body: some View {
         let ops = magasin.toutes
@@ -29,7 +30,7 @@ struct AnalysesView: View {
         let debut = donnees.first?.mois.debut ?? J.auj
         let nbMois = max(Double(J.ecart(debut, J.auj) + 1) / Ref.joursParMois, 1)
         let b = Calc.bilan(Calc.entre(ops, debut, J.auj))
-        let sel = donnees.first { $0.mois.libelle == moisChoisi }
+        let sel = donnees.first { $0.mois.libelle == (moisChoisi ?? moisGarde) }
         NavigationStack {
             Ecran {
                 Picker("Durée", selection: $n) { Text("6 mois").tag(6); Text("12 mois").tag(12) }.pickerStyle(.segmented)
@@ -39,13 +40,15 @@ struct AnalysesView: View {
                     Chart {
                         ForEach(donnees, id: \.mois.cle) { m in
                             BarMark(x: .value("Mois", m.mois.libelle), y: .value("Montant", m.b.rev)).foregroundStyle(by: .value("Série", "Revenus")).position(by: .value("Série", "Revenus")).cornerRadius(4)
-                                .opacity(moisChoisi == nil || moisChoisi == m.mois.libelle ? 1 : 0.3)
+                                .opacity(sel == nil || sel?.mois.cle == m.mois.cle ? 1 : 0.3)
                             BarMark(x: .value("Mois", m.mois.libelle), y: .value("Montant", m.b.dep)).foregroundStyle(by: .value("Série", "Dépenses")).position(by: .value("Série", "Dépenses")).cornerRadius(4)
-                                .opacity(moisChoisi == nil || moisChoisi == m.mois.libelle ? 1 : 0.3)
+                                .opacity(sel == nil || sel?.mois.cle == m.mois.cle ? 1 : 0.3)
                         }
                     }
                     .chartForegroundStyleScale(["Revenus": Color(red: 0.5, green: 0.7, blue: 0.63), "Dépenses": Color(red: 0.76, green: 0.6, blue: 0.43)])
                     .chartXSelection(value: $moisChoisi)
+                    .onChange(of: moisChoisi) { _, v in if let v { moisGarde = v } }
+                    .sensoryFeedback(.selection, trigger: moisGarde)
                     .frame(height: 200)
                     if let s = sel {
                         HStack {
@@ -72,6 +75,7 @@ struct AnalysesView: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading).padding(14)
                             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+                            .contentShape(.rect(cornerRadius: 22))
                         }
                         .buttonStyle(.plain)
                     }

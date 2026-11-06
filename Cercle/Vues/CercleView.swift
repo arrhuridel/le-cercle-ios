@@ -11,6 +11,7 @@ struct CercleView: View {
     @AppStorage("theme") private var theme = "sombre"
     @AppStorage("notifications") private var notifications = true
     @State private var nouveauGroupe = false
+    @State private var confirmerSortie = false
     @State private var budget = ""
     @State private var objectif = ""
 
@@ -30,13 +31,13 @@ struct CercleView: View {
                                 Text(s > 0.004 ? "on te doit" : s < -0.004 ? "tu dois" : "").font(.caption).foregroundStyle(.secondary)
                             }
                         }
-                        .padding(14).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+                        .padding(14).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
                     }
                     .buttonStyle(.plain)
                 }
                 Button { nouveauGroupe = true } label: {
                     HStack { Pastille(symbole: "plus"); VStack(alignment: .leading) { Text("Nouveau groupe"); Text("Coloc, voyage, soirée…").font(.footnote).foregroundStyle(.secondary) }; Spacer() }
-                        .padding(14).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+                        .padding(14).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
                 }
                 .buttonStyle(.plain)
 
@@ -69,8 +70,13 @@ struct CercleView: View {
                     NavigationLink("Membres du Cercle") { MembresView() }
                 }
                 .tint(.primary)
-                Button(magasin.etat == .demo ? "Quitter le mode démo" : "Se déconnecter", role: .destructive) { Task { await magasin.deconnecter() } }
-                    .frame(maxWidth: .infinity).padding(.top, 6)
+                Button(magasin.etat == .demo ? "Quitter le mode démo" : "Se déconnecter", role: .destructive) {
+                    if magasin.etat == .demo { Task { await magasin.deconnecter() } } else { confirmerSortie = true }
+                }
+                .frame(maxWidth: .infinity).padding(.top, 6)
+                .confirmationDialog("Se déconnecter ?", isPresented: $confirmerSortie, titleVisibility: .visible) {
+                    Button("Se déconnecter", role: .destructive) { Task { await magasin.deconnecter() } }
+                } message: { Text("Tes données restent dans la base. Il faudra ton e-mail et ton mot de passe pour revenir.") }
                 Text(magasin.etat == .demo ? "Mode démo : données inventées, rien n'est enregistré." : "Connecté à la base du site : ce que tu ajoutes ici apparaît aussi sur le site.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -86,10 +92,18 @@ struct CercleView: View {
             Text(titre)
             Spacer()
             TextField(Fmt.eur(valeur ?? 0, 0), text: texte).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 110)
-                .onSubmit { let v = Fmt.lire(texte.wrappedValue); if v >= 0 { Task { await enregistrer(v) } }; texte.wrappedValue = "" }
-            Button("OK") { let v = Fmt.lire(texte.wrappedValue); if v > 0 { Task { await enregistrer(v) } }; texte.wrappedValue = "" }
+                .onSubmit { valider(texte, enregistrer) }
+            Button("OK") { valider(texte, enregistrer) }
                 .disabled(texte.wrappedValue.isEmpty)
         }
+    }
+    /// Un champ vide ne remet jamais le budget à zéro ; « 0 » tapé exprès est accepté (pas de budget).
+    private func valider(_ texte: Binding<String>, _ enregistrer: @escaping (Double) async -> Void) {
+        let brut = texte.wrappedValue.filter { !$0.isWhitespace }
+        texte.wrappedValue = ""
+        guard !brut.isEmpty, Double(brut.replacingOccurrences(of: ",", with: ".").replacingOccurrences(of: "€", with: "")) != nil else { return }
+        let v = Fmt.lire(brut)
+        if v >= 0 { Task { await enregistrer(v) } }
     }
 }
 
@@ -108,6 +122,12 @@ struct GroupeView: View {
     @Environment(Magasin.self) private var magasin
     let groupeId: String
     @State private var ajout = false
+    @State private var enCours = false
+    @State private var aSupprimer: ASupprimer?
+    enum ASupprimer: Identifiable { case depense(String, String), reglement(String, String)
+        var id: String { switch self { case .depense(let i, _), .reglement(let i, _): i } }
+        var titre: String { switch self { case .depense(_, let t): "Supprimer la dépense « \(t) » ?"; case .reglement(_, let t): "Supprimer le remboursement \(t) ?" } }
+    }
 
     var body: some View {
         if let g = magasin.groupes.first(where: { $0.id == groupeId }) {
@@ -133,9 +153,12 @@ struct GroupeView: View {
                                 ShareLink(item: "Salut \(g.nom(v.de)) ! Petit rappel pour « \(g.groupe.nom) » : il reste \(Fmt.eur(v.montant)) à me rembourser. Merci !") { Image(systemName: "bell") }
                             }
                             Button(v.a == moi ? "Reçu" : v.de == moi ? "Payer" : "Réglé") {
-                                Task { await magasin.ajouter(reglement: Reglement(id: UUID().uuidString.lowercased(), groupeId: g.id, de: v.de, a: v.a, montant: v.montant, date: J.auj)) }
+                                guard !enCours else { return }
+                                enCours = true
+                                Task { await magasin.ajouter(reglement: Reglement(id: UUID().uuidString.lowercased(), groupeId: g.id, de: v.de, a: v.a, montant: v.montant, date: J.auj)); enCours = false }
                             }
                             .puce(true)
+                            .disabled(enCours)
                         }
                     }
                 }
@@ -160,7 +183,7 @@ struct GroupeView: View {
                             Spacer()
                             VStack(alignment: .trailing) { Text(Fmt.eur(d.montant)).monospacedDigit(); Text(part.map { "ta part \(Fmt.eur($0))" } ?? "sans toi").font(.caption).foregroundStyle(.secondary) }
                         }
-                        .contextMenu { Button("Supprimer la dépense", role: .destructive) { Task { await magasin.supprimerDepense(groupe: g.id, id: d.id) } } }
+                        .contextMenu { Button("Supprimer la dépense", role: .destructive) { aSupprimer = .depense(d.id, d.titre) } }
                     }
                 }
                 if !g.reglements.isEmpty {
@@ -168,7 +191,7 @@ struct GroupeView: View {
                     CarteVerre(espacement: 10) {
                         ForEach(g.reglements.sorted { $0.date > $1.date }) { r in
                             HStack { Pastille(symbole: "arrow.left.arrow.right"); VStack(alignment: .leading) { Text("\(g.nom(r.de)) → \(g.nom(r.a))"); Text(J.court(r.date)).font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(Fmt.eur(r.montant)).monospacedDigit() }
-                                .contextMenu { Button("Supprimer", role: .destructive) { Task { await magasin.supprimerReglement(groupe: g.id, id: r.id) } } }
+                                .contextMenu { Button("Supprimer", role: .destructive) { aSupprimer = .reglement(r.id, "\(g.nom(r.de)) → \(g.nom(r.a))") } }
                         }
                     }
                 }
@@ -180,6 +203,16 @@ struct GroupeView: View {
             .navigationTitle(g.groupe.nom)
             .toolbar { Button { ajout = true } label: { Image(systemName: "plus") } }
             .sheet(isPresented: $ajout) { DepensePartageeView(groupe: g) }
+            .confirmationDialog(aSupprimer?.titre ?? "", isPresented: Binding(get: { aSupprimer != nil }, set: { if !$0 { aSupprimer = nil } }), titleVisibility: .visible, presenting: aSupprimer) { x in
+                Button("Supprimer", role: .destructive) {
+                    Task {
+                        switch x {
+                        case .depense(let id, _): await magasin.supprimerDepense(groupe: g.id, id: id)
+                        case .reglement(let id, _): await magasin.supprimerReglement(groupe: g.id, id: id)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -203,12 +236,15 @@ struct DepensePartageeView: View {
     @State private var valeurs: [String: String] = [:]
     @State private var sc = "Restos & sorties"
     @State private var devise = "EUR"
+    @State private var id = UUID().uuidString.lowercased()   // même identifiant à chaque calcul : un second envoi serait refusé, pas dupliqué
+    @State private var enCours = false
+    @State private var echec: String?
 
     private var depense: DepensePartagee {
         let brut = Fmt.lire(montant), taux = Ref.devises.first { $0.code == devise }?.taux ?? 1
         let ordre = groupe.participants.map(\.id).filter(parts.contains)
-        return DepensePartagee(id: UUID().uuidString.lowercased(), groupeId: groupe.id, titre: titre.trimmingCharacters(in: .whitespaces), montant: (brut * taux * 100).rounded() / 100,
-                               payeur: payeur, parts: ordre, mode: mode, valeurs: Dictionary(uniqueKeysWithValues: ordre.map { ($0, Fmt.lire(valeurs[$0] ?? "")) }),
+        return DepensePartagee(id: id, groupeId: groupe.id, titre: titre.trimmingCharacters(in: .whitespaces), montant: (brut * taux * 100).rounded() / 100,
+                               payeur: payeur, parts: ordre, mode: mode, valeurs: Dictionary(ordre.map { ($0, Fmt.lire(valeurs[$0] ?? "")) }, uniquingKeysWith: { a, _ in a }),
                                sc: sc, date: J.auj, devise: devise == "EUR" ? nil : devise, montantDevise: devise == "EUR" ? nil : brut)
     }
     private var erreur: String? {
@@ -245,6 +281,7 @@ struct DepensePartageeView: View {
                 }
                 Picker("Catégorie", selection: $sc) { ForEach(Ref.themes.filter { $0.cat.estDepense }, id: \.nom) { Text($0.nom).tag($0.nom) } }
                 Section {
+                    if let echec { Text(echec).foregroundStyle(Color.negatif) }
                     if let e = erreur { Text(e).foregroundStyle(Color.alerte) }
                     else if d.montant > 0 && !d.parts.isEmpty {
                         let mienne = moi.flatMap { Tricount.parts(d)[$0] } ?? 0
@@ -259,8 +296,15 @@ struct DepensePartageeView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Annuler") { fermer() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Ajouter") { Task { await magasin.ajouter(depense: d); fermer() } }
-                        .disabled(d.montant <= 0 || d.titre.isEmpty || d.parts.isEmpty || erreur != nil || payeur.isEmpty)
+                    Button("Ajouter") {
+                        guard !enCours else { return }
+                        enCours = true
+                        Task {
+                            if await magasin.ajouter(depense: d) { fermer() } else { echec = magasin.erreur ?? "Ajout impossible : réessaie." }
+                            enCours = false
+                        }
+                    }
+                    .disabled(enCours || d.montant <= 0 || d.titre.isEmpty || d.parts.isEmpty || erreur != nil || payeur.isEmpty)
                 }
             }
             .onAppear { payeur = moi ?? groupe.participants.first?.id ?? ""; parts = Set(groupe.participants.map(\.id)) }
@@ -273,6 +317,8 @@ struct NouveauGroupeView: View {
     @Environment(\.dismiss) private var fermer
     @State private var nom = ""
     @State private var amis = ["", ""]
+    @State private var enCours = false
+    @State private var echec: String?
     var body: some View {
         NavigationStack {
             Form {
@@ -283,6 +329,7 @@ struct NouveauGroupeView: View {
                     Button("Ajouter un participant") { amis.append("") }
                 }
                 Text("Si un ami a l'app avec le même prénom, il verra le groupe chez lui.").font(.footnote).foregroundStyle(.secondary)
+                if let echec { Text(echec).font(.footnote).foregroundStyle(Color.negatif) }
             }
             .navigationTitle("Nouveau groupe")
             .toolbar {
@@ -290,9 +337,14 @@ struct NouveauGroupeView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Créer") {
                         let noms = amis.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                        Task { _ = await magasin.creerGroupe(nom: nom.trimmingCharacters(in: .whitespaces), amis: noms); fermer() }
+                        guard !enCours else { return }
+                        enCours = true
+                        Task {
+                            if await magasin.creerGroupe(nom: nom.trimmingCharacters(in: .whitespaces), amis: noms) != nil { fermer() } else { echec = magasin.erreur ?? "Création impossible : réessaie." }
+                            enCours = false
+                        }
                     }
-                    .disabled(nom.trimmingCharacters(in: .whitespaces).isEmpty || amis.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty })
+                    .disabled(enCours || nom.trimmingCharacters(in: .whitespaces).isEmpty || amis.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty })
                 }
             }
         }
@@ -351,6 +403,8 @@ struct ObjectifView: View {
     @State private var support = "Projet"
     @State private var avecDate = false
     @State private var date = Date().addingTimeInterval(180 * 86400)
+    @State private var enCours = false
+    @State private var confirmer = false
     var body: some View {
         NavigationStack {
             Form {
@@ -359,9 +413,12 @@ struct ObjectifView: View {
                 Picker("Mis de côté sur", selection: $support) { ForEach(Ref.supports, id: \.self) { Text($0) } }
                 Toggle("Date visée", isOn: $avecDate).tint(.positif)
                 if avecDate { DatePicker("Date", selection: $date, displayedComponents: .date) }
-                if let o = objectif, let s = Suivi.objectifs([o], magasin.toutes).first {
+                if let o = objectif, let s = Suivi.objectifs([o], magasin.toutes, livret: magasin.totalLivrets).first {
                     Section { Text("Déjà \(Fmt.eur(s.actuel, 0)) sur \(Fmt.eur(o.cible, 0)). Rythme sur 3 mois : \(Fmt.eur(s.rythme, 0)) par mois." + (s.parMois.map { " Pour tenir la date : \(Fmt.eur($0, 0)) par mois." } ?? "")).font(.footnote) }
-                    Button("Supprimer l'objectif", role: .destructive) { Task { await magasin.supprimer(objectif: o); fermer() } }
+                    Button("Supprimer l'objectif", role: .destructive) { confirmer = true }
+                        .confirmationDialog("Supprimer « \(o.nom) » ?", isPresented: $confirmer, titleVisibility: .visible) {
+                            Button("Supprimer", role: .destructive) { Task { if await magasin.supprimer(objectif: o) { fermer() } } }
+                        }
                 }
             }
             .navigationTitle(objectif == nil ? "Nouvel objectif" : "Objectif")
@@ -371,9 +428,11 @@ struct ObjectifView: View {
                     Button("OK") {
                         let o = Objectif(id: objectif?.id ?? UUID().uuidString.lowercased(), profilId: magasin.profil?.id ?? "", nom: nom.trimmingCharacters(in: .whitespaces),
                                          support: support, cible: Fmt.lire(cible), dateVisee: avecDate ? J.iso(date) : nil)
-                        Task { await magasin.enregistrer(o); fermer() }
+                        guard !enCours else { return }
+                        enCours = true
+                        Task { if await magasin.enregistrer(o) { fermer() }; enCours = false }
                     }
-                    .disabled(nom.trimmingCharacters(in: .whitespaces).isEmpty || Fmt.lire(cible) <= 0)
+                    .disabled(enCours || nom.trimmingCharacters(in: .whitespaces).isEmpty || Fmt.lire(cible) <= 0)
                 }
             }
             .onAppear {
@@ -400,9 +459,11 @@ struct DonneesView: View {
     @State private var importCSV = false
     @State private var photo: PhotosPickerItem?
     @State private var lignes: [Import.Ligne] = []
+    @State private var brutes: [Import.Ligne] = []
     @State private var compte = ""
     @State private var message: String?
     @State private var nouvelleRegle = false
+    @State private var enCours = false
 
     var body: some View {
         Form {
@@ -417,7 +478,14 @@ struct DonneesView: View {
                     ForEach($lignes) { $l in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Toggle(isOn: $l.garder) { Text(l.note).lineLimit(1) }.tint(.positif)
+                                // Case « sans bordure » : dans une ligne de liste, elle ne gêne pas le choix de catégorie
+                                Button { l.garder.toggle() } label: {
+                                    Image(systemName: l.garder ? "checkmark.circle.fill" : "circle").font(.title3).foregroundStyle(l.garder ? Color.positif : .secondary)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(l.garder ? "Importer cette ligne" : "Ne pas importer cette ligne")
+                                Text(l.note).lineLimit(1)
+                                Spacer()
                                 Text(Fmt.eur(l.montant, signe: true)).monospacedDigit().foregroundStyle(l.montant > 0 ? Color.positif : .primary)
                             }
                             Text("\(J.court(l.date)) · \(l.libelle)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -425,12 +493,17 @@ struct DonneesView: View {
                                 Picker("Catégorie", selection: $l.sc) {
                                     ForEach(Ref.themes.filter { $0.cat != .virement && ($0.cat == .revenu) == (l.montant > 0) }, id: \.nom) { Text($0.nom).tag($0.nom) }
                                 }
-                                .labelsHidden().tint(.primary)
+                                .labelsHidden().tint(.primary).pickerStyle(.menu).buttonStyle(.borderless)
                                 Text(l.doublon.map { "déjà saisie : \($0)" } ?? l.source).badge(l.doublon == nil ? .secondary : .alerte)
                             }
                         }
                     }
-                    Button("Ajouter les opérations cochées") { Task { await valider() } }.fontWeight(.semibold)
+                    Button {
+                        Task { await valider() }
+                    } label: {
+                        if enCours { ProgressView() } else { Text("Ajouter les opérations cochées (\(lignes.filter(\.garder).count))").fontWeight(.semibold) }
+                    }
+                    .disabled(enCours || !lignes.contains(where: \.garder))
                     Text("Une catégorie corrigée devient une règle : la prochaine fois, ce libellé sera classé tout seul.").font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -443,7 +516,7 @@ struct DonneesView: View {
                 Text("Les libellés inconnus sont ensuite classés par tes règles, ton historique, puis les règles du site.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Sauvegarde") {
-                ShareLink(item: SauvegardeJSON(donnees: magasin.exportJSON()), preview: SharePreview("Sauvegarde Le Cercle")) { Label("Exporter une sauvegarde (JSON)", systemImage: "square.and.arrow.up") }
+                ShareLink(item: SauvegardeJSON(instantane: magasin.instantane), preview: SharePreview("Sauvegarde Le Cercle")) { Label("Exporter une sauvegarde (JSON)", systemImage: "square.and.arrow.up") }
                 Text("Tes données sont déjà dans ta base Supabase ; cette copie te sert d'archive personnelle.").font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -470,12 +543,15 @@ struct DonneesView: View {
             }
         }
         .sheet(isPresented: $nouvelleRegle) { RegleView() }
+        // Les doublons dépendent du compte choisi : on les recherche à nouveau sur le bon compte
+        .onChange(of: compte) { _, _ in if !brutes.isEmpty { preparer(brutes) } }
     }
 
     /// Catégorie proposée et doublons (même sens et même montant sur le compte, à 5 jours près, comme le site).
-    private func preparer(_ brutes: [Import.Ligne]) {
+    private func preparer(_ entree: [Import.Ligne]) {
+        brutes = entree
         var pris = Set<String>()
-        lignes = brutes.map { b in
+        lignes = entree.map { b in
             var l = b
             let p = Import.proposer(l.libelle, l.montant, regles: magasin.regles, historique: magasin.ops)
             l.sc = p.sc; l.note = p.note; l.source = p.source
@@ -488,16 +564,25 @@ struct DonneesView: View {
         }
     }
 
+    /// Ajoute les lignes cochées. Si la base refuse, rien n'est ajouté, les lignes restent à l'écran et le message le dit.
     private func valider() async {
+        guard !enCours else { return }
+        enCours = true
+        defer { enCours = false }
         let gardees = lignes.filter(\.garder)
+        guard !gardees.isEmpty else { return }
+        let corrigees = gardees.filter { l in l.source == "corrigé" || Import.proposer(l.libelle, l.montant, regles: magasin.regles, historique: magasin.ops).sc != l.sc }
         let ops = gardees.map { l in magasin.nouvelleOperation(date: l.date, sc: l.sc, montant: abs(l.montant), note: l.note, compte: compte, vers: nil, source: "csv") }
-        for l in gardees where l.source == "corrigé" || Import.proposer(l.libelle, l.montant, regles: magasin.regles, historique: magasin.ops).sc != l.sc {
+        guard await magasin.ajouter(ops) else {
+            message = "Rien n'a été ajouté : \(magasin.erreur ?? "la base n'a pas répondu"). Réessaie."
+            return
+        }
+        for l in corrigees {
             let motif = Import.cleLibelle(l.libelle)
             if !motif.isEmpty { magasin.ajouterRegle(Import.Regle(motif: motif, sc: l.sc, note: l.note)) }
         }
-        await magasin.ajouter(ops)
-        message = "\(ops.count) opération(s) ajoutée(s)."
-        lignes = []
+        message = "\(ops.count) opération(s) ajoutée(s) sur \(magasin.nomCompte(compte))."
+        lignes = []; brutes = []
     }
 }
 
@@ -523,9 +608,14 @@ struct RegleView: View {
     }
 }
 
+/// Sauvegarde JSON : le fichier n'est fabriqué qu'au moment du partage (pas à chaque affichage de l'écran).
 struct SauvegardeJSON: Transferable {
-    let donnees: Data
+    let instantane: Instantane
     static var transferRepresentation: some TransferRepresentation {
-        DataRepresentation(exportedContentType: .json) { $0.donnees }.suggestedFileName("le-cercle-sauvegarde.json")
+        DataRepresentation(exportedContentType: .json) { s in
+            let e = JSONEncoder(); e.outputFormatting = [.prettyPrinted, .sortedKeys]
+            return try e.encode(s.instantane)
+        }
+        .suggestedFileName("le-cercle-sauvegarde.json")
     }
 }

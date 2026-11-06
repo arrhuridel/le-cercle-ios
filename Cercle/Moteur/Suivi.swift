@@ -120,13 +120,18 @@ enum Suivi {
         var enRetard: Bool { if let p = parMois { return reste > 0 && rythme < p * 0.95 }; return false }
     }
     /// Progression = épargne nette du support depuis le début (versements − retraits), comme sur le site.
-    static func objectifs(_ obj: [Objectif], _ ops: [Operation]) -> [SuiviObjectif] {
+    /// `livret` : solde réel des livrets d'après les relevés (quand le site les a enregistrés). Il remplace la somme
+    /// des virements pour un objectif rangé sur le Livret, car celle-ci ignore l'argent d'avant l'historique et les intérêts.
+    static func objectifs(_ obj: [Objectif], _ ops: [Operation], livret: Double? = nil) -> [SuiviObjectif] {
         let limite = J.plus(J.auj, jours: -91)
         var total: [String: Double] = [:], recent: [String: Double] = [:]
         for o in ops { let c = Calc.compense(o); guard c.cat == .epargne else { continue }
             total[c.sc, default: 0] += c.montant
             if o.date > limite { recent[c.sc, default: 0] += c.montant } }
-        return obj.map { SuiviObjectif(o: $0, actuel: max(total[$0.support] ?? 0, 0), rythme: (recent[$0.support] ?? 0) / 3) }
+        return obj.map { o in
+            let actuel = o.support == "Livret" && livret != nil ? livret! : (total[o.support] ?? 0)
+            return SuiviObjectif(o: o, actuel: max(actuel, 0), rythme: (recent[o.support] ?? 0) / 3)
+        }
     }
 
     /// Abonnements actifs (thème « Abonnements », payés dans les 40 derniers jours) et leur coût mensuel sur 3 mois.

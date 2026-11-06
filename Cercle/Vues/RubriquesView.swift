@@ -35,14 +35,6 @@ struct RubriqueView: View {
     }
 }
 
-/// Le tableau courant (mêmes réglages que le Résumé), pour les rubriques qui en ont besoin.
-extension Magasin {
-    var tableau: Tableau {
-        Tableau(ops: toutes, mode: Calc.Mode(rawValue: UserDefaults.standard.string(forKey: "modePeriode") ?? "") ?? .paie, perso: nil,
-                budgetMensuel: profil?.budget ?? 0, objectifEpargne: profil?.objectifEpargne ?? 0,
-                enveloppes: enveloppes, objectifs: objectifs, soldeInitial: soldesInitiaux[""] ?? 0)
-    }
-}
 
 /// Classement en barres horizontales.
 struct Classement: View {
@@ -242,7 +234,12 @@ struct EpargneVue: View {
                 RuleMark(y: .value("Repère", 20)).lineStyle(StrokeStyle(dash: [4])).foregroundStyle(.secondary)
             }.frame(height: 150)
         }
-        let supports = Dictionary(grouping: ops.map(Calc.compense).filter { $0.cat == .epargne }, by: \.sc).map { Classement.Ligne(nom: $0.key, v: $0.value.reduce(0) { $0 + $1.montant }, sous: "versements − retraits depuis le début", sc: $0.key) }
+        // Le Livret vient des relevés (solde réel, comme le site) ; les autres supports, des versements nets
+        let lv = magasin.livrets
+        let nets = Dictionary(grouping: ops.map(Calc.compense).filter { $0.cat == .epargne && (lv == nil || $0.sc != "Livret") }, by: \.sc)
+            .map { Classement.Ligne(nom: $0.key, v: $0.value.reduce(0) { $0 + $1.montant }, sous: "versements − retraits depuis le début", sc: $0.key) }
+        let livrets = lv.map { l in l.noms.map { Classement.Ligne(nom: $0, v: l.solde($0, le: J.auj), sous: "solde d'après tes relevés", sc: "Livret") } } ?? []
+        let supports = nets + livrets
         TitreSection(texte: "Mes supports")
         Classement(lignes: supports.sorted { $0.v > $1.v })
     }
@@ -307,6 +304,7 @@ struct ComparerVue: View {
 
 struct AnomaliesVue: View {
     @Environment(Magasin.self) private var magasin
+    @State private var aSupprimer: Operation?
     var body: some View {
         let a = Conseil.anomalies(magasin.ops, ignores: magasin.ignores)
         TitreSection(texte: "Doublons possibles")
@@ -317,12 +315,16 @@ struct AnomaliesVue: View {
                     Tuile(sc: y.sc)
                     VStack(alignment: .leading) { Text("\(y.note.isEmpty ? y.sc : y.note) · \(Fmt.eur(y.montant))"); Text("saisi le \(J.court(x.date)) et le \(J.court(y.date))").font(.caption).foregroundStyle(.secondary) }
                     Spacer()
-                    Button("Supprimer", role: .destructive) { Task { await magasin.supprimer(y) } }.font(.footnote)
+                    Button("Supprimer", role: .destructive) { aSupprimer = y }.font(.footnote)
                     Button { magasin.ignorer(y.id) } label: { Image(systemName: "checkmark") }.accessibilityLabel("Ce n'est pas un doublon")
                 }
                 .buttonStyle(.borderless)
             }
         }
+        Color.clear.frame(height: 0)
+            .confirmationDialog("Supprimer ce doublon ?", isPresented: Binding(get: { aSupprimer != nil }, set: { if !$0 { aSupprimer = nil } }), titleVisibility: .visible, presenting: aSupprimer) { y in
+                Button("Supprimer \(y.note.isEmpty ? y.sc : y.note) du \(J.court(y.date))", role: .destructive) { Task { await magasin.supprimer(y) } }
+            } message: { _ in Text("La seconde saisie sera supprimée de la base (site compris). La première reste.") }
         TitreSection(texte: "Dépenses inhabituelles")
         CarteVerre(espacement: 12) {
             if a.inhabituelles.isEmpty { Text("Rien d'inhabituel.").foregroundStyle(.secondary) }
@@ -366,7 +368,7 @@ struct SimulationsVue: View {
             Text(Fmt.eur((gain + epargne) * mois, 0, signe: true)).font(.largeTitle.weight(.bold)).foregroundStyle(Color.positif).monospacedDigit()
             Text("mis de côté en plus en \(Int(mois)) mois (\(Fmt.eur(gain + epargne, 0)) par mois, dont \(Fmt.eur(gain, 0)) d'économies)").font(.footnote).foregroundStyle(.secondary)
             Text("Ton épargne passerait de \(Fmt.eur(epa, 0)) à \(Fmt.eur(epa + gain + epargne, 0)) par mois.").font(.subheadline)
-            ForEach(Suivi.objectifs(magasin.objectifs, ops).filter { $0.reste > 0 }) { o in
+            ForEach(Suivi.objectifs(magasin.objectifs, ops, livret: magasin.totalLivrets).filter { $0.reste > 0 }) { o in
                 let apres = Int((o.reste / max(o.rythme + gain + epargne, 1)).rounded(.up))
                 Text("\(o.o.nom) : atteint en \(apres) mois" + (o.estimation.map { " au lieu de \($0)" } ?? "")).font(.subheadline)
             }
@@ -377,7 +379,7 @@ struct SimulationsVue: View {
 struct ScoreVue: View {
     @Environment(Magasin.self) private var magasin
     var body: some View {
-        let s = Conseil.score(magasin.tableau, budgetMensuel: magasin.profil?.budget ?? 0)
+        let s = Conseil.score(magasin.tableau(), budgetMensuel: magasin.profil?.budget ?? 0)
         CarteVerre {
             Gauge(value: Double(s.total), in: 0...100) { Text("Santé") } currentValueLabel: { Text("\(s.total)").font(.title.bold()) }
                 .gaugeStyle(.accessoryCircularCapacity).tint(Color.positif).scaleEffect(2).frame(height: 130).frame(maxWidth: .infinity)

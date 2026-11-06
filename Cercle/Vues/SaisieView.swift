@@ -24,6 +24,8 @@ struct SaisieView: View {
     @State private var secoue = 0
     @FocusState private var noteActive: Bool
     @State private var pret = false
+    @State private var enCours = false     // empêche un double enregistrement (double tap, bouton du haut + bouton du bas)
+    @State private var livret = ""         // livret visé par un versement ou un retrait
 
     var body: some View {
         NavigationStack {
@@ -32,7 +34,11 @@ struct SaisieView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Picker("Type", selection: $type) { ForEach(Ref.TypeSaisie.allCases) { Text($0.rawValue).tag($0) } }
                             .pickerStyle(.segmented)
-                            .onChange(of: type) { _, _ in if pret { sc = nil; choixManuel = false; indice = "" } }
+                            .onChange(of: type) { _, nt in
+                                // Un raccourci ou une capture règle le type ET la catégorie : on ne garde la catégorie que si elle va avec le type.
+                                guard pret, let s = sc, !nt.themes.contains(where: { $0.nom == s }) else { return }
+                                sc = nil; choixManuel = false; indice = ""
+                            }
                         Button { noteActive = false } label: {
                             Text(montantAffiche).font(.system(size: 58, weight: .semibold, design: .rounded)).monospacedDigit()
                                 .foregroundStyle(montant.isEmpty ? .tertiary : .primary).frame(maxWidth: .infinity)
@@ -75,6 +81,12 @@ struct SaisieView: View {
                                 }
                             }
                             .sensoryFeedback(.selection, trigger: sc)
+                            if let noms = nomsLivrets, sc == "Livret" || sc == "Retrait d'épargne" {
+                                Text(sc == "Livret" ? "Vers le livret" : "Depuis le livret").etiquette()
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack { ForEach(noms, id: \.self) { n in Button(n) { livret = n }.puce(livret == n) } }
+                                }
+                            }
                             Text(type == .depense ? "Payé avec" : type == .revenu ? "Reçu sur" : "Depuis").etiquette()
                             puces(magasin.comptes, $compte)
                         }
@@ -94,7 +106,12 @@ struct SaisieView: View {
                 if !noteActive { pave }
             }
             .navigationTitle(edition == nil ? "Nouvelle opération" : "Modifier").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annuler") { fermer() } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Annuler") { fermer() } }
+                // « Enregistrer » reste accessible en haut même quand le clavier cache le pavé
+                ToolbarItem(placement: .confirmationAction) { Button("Enregistrer") { Task { await enregistrer() } }.fontWeight(.semibold).disabled(enCours) }
+                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("OK") { noteActive = false } }
+            }
             .onAppear(perform: preparer)
             .onChange(of: photo) { _, p in if let p { Task { await lireCapture(p) } } }
         }
@@ -116,8 +133,11 @@ struct SaisieView: View {
                 }
             }
             Button { Task { await enregistrer() } } label: {
-                Text(edition == nil ? "Enregistrer" : "Enregistrer les modifications").font(.headline).frame(maxWidth: .infinity, minHeight: 52)
+                Group { if enCours { ProgressView() } else { Text(edition == nil ? "Enregistrer" : "Enregistrer les modifications") } }
+                    .font(.headline).frame(maxWidth: .infinity, minHeight: 52).contentShape(.capsule)
             }
+            .buttonStyle(.plain)
+            .disabled(enCours)
             .glassEffect(.regular.interactive().tint(.primary.opacity(0.25)), in: .capsule)
         }
         .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 12)
@@ -164,6 +184,16 @@ struct SaisieView: View {
         return g.values.filter { $0.n >= 2 }.sorted { $0.n > $1.n }.prefix(6).map(\.o)
     }
 
+    /// Noms des livrets connus par les relevés du site (nil s'il n'y en a pas).
+    private var nomsLivrets: [String]? {
+        guard let n = magasin.livrets?.noms, !n.isEmpty else { return nil }
+        return n
+    }
+
+    private static func typePour(cat: Cat, sc: String) -> Ref.TypeSaisie {
+        cat == .virement ? .virement : (cat == .epargne || Ref.mouvementsEpargne.contains(sc)) ? .epargne : cat == .revenu ? .revenu : .depense
+    }
+
     private func puces(_ l: [String], _ choix: Binding<String>) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack { ForEach(l, id: \.self) { k in Button(magasin.nomCompte(k)) { choix.wrappedValue = k }.puce(choix.wrappedValue == k) } }
@@ -174,16 +204,18 @@ struct SaisieView: View {
         let comptes = magasin.comptes
         vers = comptes.count > 1 ? comptes[1] : ""
         if let o = edition {
-            type = o.cat == .virement ? .virement : (o.cat == .epargne || Ref.mouvementsEpargne.contains(o.sc)) ? .epargne : o.cat == .revenu ? .revenu : .depense
+            type = Self.typePour(cat: o.cat, sc: o.sc)
             montant = Fmt.nombre(o.montantDevise ?? o.montant).replacingOccurrences(of: "\u{202f}", with: "").replacingOccurrences(of: " ", with: "")
             sc = o.cat == .virement ? nil : o.sc; choixManuel = true
             note = o.note; compte = o.compte; vers = o.vers ?? vers; date = J.date(o.date); devise = o.devise ?? "EUR"
+            livret = nomsLivrets.flatMap { Livrets.vise(o.sc, o.note, $0) } ?? ""
         }
         DispatchQueue.main.async { pret = true }
     }
 
     private func remplir(_ o: Operation) {
-        type = o.cat == .virement ? .virement : (o.cat == .epargne || Ref.mouvementsEpargne.contains(o.sc)) ? .epargne : o.cat == .revenu ? .revenu : .depense
+        type = Self.typePour(cat: o.cat, sc: o.sc)
+        livret = nomsLivrets.flatMap { Livrets.vise(o.sc, o.note, $0) } ?? ""
         sc = o.sc; choixManuel = true; note = o.note; compte = o.compte
         montant = String(format: "%.2f", o.montant).replacingOccurrences(of: ".", with: ",").replacingOccurrences(of: ",00", with: "")
         indice = "Rempli depuis un raccourci"
@@ -206,26 +238,40 @@ struct SaisieView: View {
         let lignes = Import.analyserTexte(await Lecteur.texte(img))
         guard let l = lignes.first else { indice = "Aucun montant trouvé sur l'image."; return }
         let prop = Import.proposer(l.libelle, l.montant, regles: magasin.regles, historique: magasin.ops)
-        type = l.montant > 0 ? .revenu : .depense
+        // Le type suit la catégorie proposée (un virement vers le livret va dans Épargne, par exemple)
+        type = Self.typePour(cat: Ref.theme(prop.sc).cat, sc: prop.sc)
         montant = String(format: "%.2f", abs(l.montant)).replacingOccurrences(of: ".", with: ",")
-        note = prop.note; sc = prop.sc; choixManuel = true; date = J.date(l.date)
+        note = prop.note; sc = type == .virement ? nil : prop.sc; choixManuel = true; date = J.date(l.date)
         indice = lignes.count > 1 ? "Première ligne lue sur \(lignes.count) : pour tout ajouter, passe par Mon espace › Importer." : "Lu sur l'image : vérifie avant d'enregistrer."
     }
 
     private func enregistrer() async {
+        guard !enCours else { return }
+        enCours = true
+        defer { enCours = false }
         let brut = Fmt.lire(montant)
         guard brut > 0 else { indice = "Saisis un montant."; secoue += 1; return }
         if type != .virement && sc == nil { indice = "Choisis une catégorie."; secoue += 1; return }
         if type == .virement && compte == vers { indice = "Choisis deux comptes différents."; secoue += 1; return }
-        let taux = Ref.devises.first { $0.code == devise }?.taux ?? 1
-        let m = (brut * taux * 100).rounded() / 100
         let theme = type == .virement ? "Virement interne" : sc!
-        var o = magasin.nouvelleOperation(date: J.iso(date), sc: theme, montant: m, note: note.trimmingCharacters(in: .whitespaces),
+        let estLivret = theme == "Livret" || theme == "Retrait d'épargne"
+        if estLivret, nomsLivrets != nil, livret.isEmpty { indice = "Choisis le livret."; secoue += 1; return }
+        let taux = Ref.devises.first { $0.code == devise }?.taux ?? 1
+        var m = (brut * taux * 100).rounded() / 100
+        // Modification sans changer le montant ni la devise : on garde le montant en euros d'origine (le taux a pu bouger)
+        if let e = edition, (e.devise ?? "EUR") == devise, abs((e.montantDevise ?? e.montant) - brut) < 0.005 { m = e.montant }
+        var texte = note.trimmingCharacters(in: .whitespaces)
+        // Le nom du livret doit figurer dans la note : c'est ainsi que le site et l'app suivent son solde
+        if estLivret, !livret.isEmpty, !texte.lowercased().contains(livret.lowercased()) {
+            let lien = (theme == "Livret" ? "Vers le " : "Depuis le ") + livret
+            texte = texte.isEmpty ? lien : texte + " · " + lien
+        }
+        var o = magasin.nouvelleOperation(date: J.iso(date), sc: theme, montant: m, note: texte,
                                           compte: compte, vers: type == .virement ? vers : nil,
                                           devise: devise == "EUR" ? nil : devise, montantDevise: devise == "EUR" ? nil : brut)
         if let e = edition {
             o.id = e.id; o.creeLe = e.creeLe; o.source = e.source
-            await magasin.modifier(o)
+            guard await magasin.modifier(o) else { indice = magasin.erreur ?? "Modification impossible."; return }
         } else {
             guard await magasin.ajouter(o) else { indice = magasin.erreur ?? "Enregistrement impossible."; return }
             if repeter {

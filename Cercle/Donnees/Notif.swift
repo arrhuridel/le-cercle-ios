@@ -19,9 +19,7 @@ enum Notif {
     /// Après un ajout : prévient si l'enveloppe de cette catégorie passe 80 % ou si le budget est dépassé.
     @MainActor static func apresAjout(_ o: Operation, magasin: Magasin) {
         guard UserDefaults.standard.object(forKey: "notifications") as? Bool ?? true else { return }
-        let t = Tableau(ops: magasin.toutes, mode: Calc.Mode(rawValue: UserDefaults.standard.string(forKey: "modePeriode") ?? "") ?? .paie, perso: nil,
-                        budgetMensuel: magasin.profil?.budget ?? 0, objectifEpargne: magasin.profil?.objectifEpargne ?? 0,
-                        enveloppes: magasin.enveloppes, objectifs: magasin.objectifs, soldeInitial: magasin.soldesInitiaux[""] ?? 0)
+        let t = magasin.tableau()   // même période que le Résumé, personnalisée comprise
         if let e = t.enveloppes.first(where: { $0.e.sc == o.sc }), e.etat != .ok {
             envoyer("env-\(o.id)", e.etat == .depasse ? "\(o.sc) : enveloppe dépassée de \(Fmt.eur(-e.reste, 0))." : "\(o.sc) : \(Fmt.pct(e.part)) de l'enveloppe utilisés, il reste \(Fmt.eur(e.reste, 0)).", dans: 3)
         } else if t.b.dep > t.budget && t.budget > 0 {
@@ -30,11 +28,11 @@ enum Notif {
     }
 
     /// Rappel 6 jours après l'installation : l'app installée avec un Apple ID gratuit expire au bout de 7 jours.
+    /// La date d'installation est celle du dossier de l'app : elle change à chaque réinstallation avec Sideloadly.
     static func rappelExpiration() {
-        let cle = "installeLe"
-        let d = UserDefaults.standard
-        if d.object(forKey: cle) == nil { d.set(Date(), forKey: cle) }
-        guard let installe = d.object(forKey: cle) as? Date else { return }
+        let attributs = try? FileManager.default.attributesOfItem(atPath: Bundle.main.bundlePath)
+        let installe = (attributs?[.creationDate] as? Date) ?? Date()
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["expiration"])
         let dans = installe.addingTimeInterval(6 * 86400).timeIntervalSinceNow
         if dans > 0 { envoyer("expiration", "L'app expire demain : rebranche ton iPhone et réinstalle-la avec Sideloadly (tes données restent).", dans: dans) }
     }

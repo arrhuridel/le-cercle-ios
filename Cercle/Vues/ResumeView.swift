@@ -9,14 +9,13 @@ struct ResumeView: View {
     @State private var vue = "Dépenses"
     @State private var selection: String?
     @State private var angle: Double?
-    @State private var perso = (J.iso(J.debutDuMois(J.aujourdhui)), J.auj)
+    // Dates de la période personnalisée, gardées pour tous les écrans (Conseiller, Score, notifications)
+    @AppStorage("persoDebut") private var persoDebut = J.iso(J.debutDuMois(J.aujourdhui))
+    @AppStorage("persoFin") private var persoFin = J.auj
     @State private var choixPerso = false
 
-    private var tableau: Tableau {
-        Tableau(ops: magasin.toutes, mode: Calc.Mode(rawValue: modeBrut) ?? .paie, perso: perso,
-                budgetMensuel: magasin.profil?.budget ?? 0, objectifEpargne: magasin.profil?.objectifEpargne ?? 0,
-                enveloppes: magasin.enveloppes, objectifs: magasin.objectifs, soldeInitial: magasin.soldesInitiaux[""] ?? 0)
-    }
+    /// Calculé une seule fois par état des données (cache du magasin) : toucher l'anneau ne refait plus tous les calculs.
+    private var tableau: Tableau { magasin.tableau(mode: Calc.Mode(rawValue: modeBrut) ?? .paie, perso: (persoDebut, persoFin)) }
 
     var body: some View {
         let t = tableau
@@ -69,8 +68,8 @@ struct ResumeView: View {
             .sheet(isPresented: $choixPerso) {
                 NavigationStack {
                     Form {
-                        DatePicker("Du", selection: Binding(get: { J.date(perso.0) }, set: { perso.0 = J.iso($0) }), displayedComponents: .date)
-                        DatePicker("Au", selection: Binding(get: { J.date(perso.1) }, set: { perso.1 = J.iso($0) }), displayedComponents: .date)
+                        DatePicker("Du", selection: Binding(get: { J.date(persoDebut) }, set: { persoDebut = J.iso($0) }), displayedComponents: .date)
+                        DatePicker("Au", selection: Binding(get: { J.date(persoFin) }, set: { persoFin = J.iso($0) }), displayedComponents: .date)
                         Text("Le budget est ramené au nombre de jours de la période.").font(.footnote).foregroundStyle(.secondary)
                     }
                     .navigationTitle("Période").toolbar { Button("OK") { choixPerso = false } }
@@ -143,7 +142,8 @@ struct ResumeView: View {
                 .onChange(of: angle) { _, v in
                     guard let v else { return }
                     var cumul = 0.0
-                    for e in tete { cumul += e.1; if v <= cumul { selection = selection == e.0 ? nil : e.0; break } }
+                    // glisser sur l'anneau désigne une part ; on ne bascule pas (sinon chaque petit mouvement l'allume puis l'éteint)
+                    for e in tete { cumul += e.1; if v <= cumul { if selection != e.0 { selection = e.0 }; break } }
                 }
                 .chartBackground { _ in
                     VStack(spacing: 2) {
@@ -165,6 +165,7 @@ struct ResumeView: View {
                         }
                         .padding(6)
                         .background(selection == e.0 ? Color.primary.opacity(0.06) : .clear, in: .rect(cornerRadius: 12))
+                        .contentShape(.rect(cornerRadius: 12))   // toute la ligne réagit, pas seulement le texte
                     }
                     .buttonStyle(.plain)
                 }
@@ -292,6 +293,7 @@ struct ComptesVue: View {
         }
         NavigationLink { PatrimoineView() } label: {
             CarteVerre { HStack { Pastille(symbole: "building.columns", teinte: .purple); Text("Patrimoine et placements"); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.tertiary) } }
+                .contentShape(.rect(cornerRadius: 24))
         }
         .buttonStyle(.plain)
         TitreSection(texte: "Objectifs d'épargne", action: ("Nouveau", { nouvelObjectif = true }))
@@ -309,6 +311,7 @@ struct ComptesVue: View {
                                 .font(.caption).foregroundStyle(o.enRetard ? Color.alerte : .secondary)
                         }
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }

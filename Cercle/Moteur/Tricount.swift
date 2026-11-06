@@ -25,11 +25,11 @@ enum Tricount {
         var ent = bruts.map { Int($0.rounded(.down)) }
         var reste = cents - ent.reduce(0, +)
         for i in bruts.indices.sorted(by: { bruts[$0] - Double(ent[$0]) > bruts[$1] - Double(ent[$1]) }) where reste > 0 { ent[i] += 1; reste -= 1 }
-        return Dictionary(uniqueKeysWithValues: zip(ids, ent.map { Double($0) / 100 }))
+        return Dictionary(zip(ids, ent.map { Double($0) / 100 }), uniquingKeysWith: +)   // un participant cité deux fois : ses parts s'additionnent
     }
 
     static func soldes(_ g: GroupeComplet) -> [String: Double] {
-        var s = Dictionary(uniqueKeysWithValues: g.participants.map { ($0.id, 0.0) })
+        var s = Dictionary(g.participants.map { ($0.id, 0.0) }, uniquingKeysWith: { a, _ in a })
         for d in g.depenses {
             s[d.payeur, default: 0] += d.montant
             for (p, m) in parts(d) { s[p, default: 0] -= m }

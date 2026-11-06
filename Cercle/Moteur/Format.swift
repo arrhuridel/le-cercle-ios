@@ -20,7 +20,7 @@ enum Fmt {
     static func nombre(_ v: Double, _ dec: Int = 2) -> String { (dec == 0 ? f0 : f2).string(from: NSNumber(value: v)) ?? "\(v)" }
     /// Lit un montant tapé à la française (« 1 234,50 »).
     static func lire(_ t: String) -> Double {
-        let s = t.replacingOccurrences(of: "\u{00a0}", with: "").replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "€", with: "").replacingOccurrences(of: ",", with: ".")
+        let s = t.filter { !$0.isWhitespace && $0 != "€" }.replacingOccurrences(of: ",", with: ".")
         return ((Double(s) ?? 0) * 100).rounded() / 100
     }
 }

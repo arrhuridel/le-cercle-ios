@@ -16,7 +16,7 @@ struct ConseillerView: View {
     private let suggestions = ["Où puis-je économiser ?", "Combien je peux dépenser ce week-end ?", "Analyse mes abonnements", "Comment va mon épargne ?", "Comparé au mois dernier ?"]
 
     var body: some View {
-        let t = magasin.tableau, recos = Conseil.recommandations(t)
+        let t = magasin.tableau(), recos = Conseil.recommandations(t)
         let total = recos.reduce(0) { $0 + $1.gain }
         ScrollViewReader { defilement in
             Ecran {
@@ -75,7 +75,7 @@ struct ConseillerView: View {
         messages.append(Message(deMoi: true, texte: q))
         question = ""
         reflechit = true
-        let faits = Faits.reponse(q, t: magasin.tableau, profil: magasin.profil)
+        let faits = Faits.reponse(q, t: magasin.tableau(), profil: magasin.profil)
         Task {
             let texte = await Modele.rediger(question: q, faits: faits)
             messages.append(Message(deMoi: false, texte: texte))

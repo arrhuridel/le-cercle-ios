@@ -38,16 +38,22 @@ struct ActiviteView: View {
             List {
                 Section {
                     Picker("Filtre", selection: $filtre) { ForEach(filtres, id: \.self) { Text($0) } }.pickerStyle(.segmented)
-                    HStack {
-                        Menu {
-                            Button("Tous les comptes") { compte = nil }
-                            ForEach(magasin.comptes, id: \.self) { k in Button("\(magasin.nomCompte(k)) · \(Fmt.eur(magasin.solde(k)))") { compte = k } }
-                        } label: { Label(compte.map { magasin.nomCompte($0) } ?? "Tous les comptes", systemImage: "building.columns") }
-                        Spacer()
-                        Menu {
-                            Button("Tous les mois") { mois = nil }
-                            ForEach(Calc.moisDerniers(12).reversed()) { m in Button(m.long.capitalizedPremiere) { mois = m.cle } }
-                        } label: { Label(mois.map { m in Calc.moisDerniers(12).first { $0.cle == m }?.long.capitalizedPremiere ?? m } ?? "Tous les mois", systemImage: "calendar") }
+                    // Un seul menu par ligne : dans une liste iPhone, deux boutons sur la même ligne se gênent
+                    // (le toucher peut déclencher le mauvais).
+                    Menu {
+                        Button("Tous les comptes") { compte = nil }
+                        ForEach(magasin.comptes, id: \.self) { k in Button("\(magasin.nomCompte(k)) · \(Fmt.eur(magasin.solde(k)))") { compte = k } }
+                    } label: {
+                        HStack { Label(compte.map { magasin.nomCompte($0) } ?? "Tous les comptes", systemImage: "building.columns"); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(.tertiary) }
+                            .contentShape(Rectangle())
+                    }
+                    .font(.subheadline).tint(.primary)
+                    Menu {
+                        Button("Tous les mois") { mois = nil }
+                        ForEach(Calc.moisDerniers(12).reversed()) { m in Button(m.long.capitalizedPremiere) { mois = m.cle } }
+                    } label: {
+                        HStack { Label(mois.map { m in Calc.moisDerniers(12).first { $0.cle == m }?.long.capitalizedPremiere ?? m } ?? "Tous les mois", systemImage: "calendar"); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(.tertiary) }
+                            .contentShape(Rectangle())
                     }
                     .font(.subheadline).tint(.primary)
                     HStack {
@@ -153,16 +159,27 @@ struct DetailOperation: View {
 
 /// Export CSV au format du site (point-virgule, virgule décimale), partagé par la feuille iOS.
 struct ExportCSV: Transferable {
-    let texte: String
-    /// Le texte est préparé tout de suite (sur l'écran), le fichier seulement au moment du partage.
+    let ops: [Operation]
+    let noms: [String: String]
+    /// Rien n'est calculé à l'affichage de l'écran : le fichier n'est fabriqué qu'au moment du partage.
     @MainActor init(ops: [Operation], magasin: Magasin) {
+        self.ops = ops
+        var n: [String: String] = [:]
+        for k in Set(ops.map(\.compte) + ops.compactMap(\.vers)) { n[k] = magasin.nomCompte(k) }
+        noms = n
+    }
+    /// Un champ avec ; " ou un retour à la ligne est mis entre guillemets, les guillemets sont doublés (norme CSV).
+    private static func champ(_ s: String) -> String {
+        s.contains(where: { ";\"\n\r".contains($0) }) ? "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : s
+    }
+    var texte: String {
         var l = ["date;categorie;theme;montant;note;compte;vers_compte"]
         for o in ops {
             let montant = String(format: "%.2f", o.montant).replacingOccurrences(of: ".", with: ",")
-            let champs = [o.date, o.cat.rawValue, o.sc, montant, o.note, magasin.nomCompte(o.compte), o.vers.map { magasin.nomCompte($0) } ?? ""]
-            l.append(champs.map { $0.contains(";") ? "\"\($0)\"" : $0 }.joined(separator: ";"))
+            let champs = [o.date, o.cat.rawValue, o.sc, montant, o.note, noms[o.compte] ?? o.compte, o.vers.map { noms[$0] ?? $0 } ?? ""]
+            l.append(champs.map(Self.champ).joined(separator: ";"))
         }
-        texte = "\u{feff}" + l.joined(separator: "\r\n")
+        return "\u{feff}" + l.joined(separator: "\r\n")
     }
     static var transferRepresentation: some TransferRepresentation {
         DataRepresentation(exportedContentType: .commaSeparatedText) { e in Data(e.texte.utf8) }
