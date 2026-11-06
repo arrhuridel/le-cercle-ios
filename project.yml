@@ -1,0 +1,33 @@
+# Description du projet Xcode, modifiable depuis Windows.
+# Sur GitHub, l'outil XcodeGen transforme ce fichier en projet Xcode (Cercle.xcodeproj) avant la compilation.
+name: Cercle
+options:
+  bundleIdPrefix: fr.lecercle
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Cercle:
+    type: application
+    platform: iOS
+    sources:
+      - Cercle
+    info:
+      path: Support/Info.plist
+      properties:
+        CFBundleDisplayName: Le Cercle
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSFaceIDUsageDescription: "Face ID protège l'accès à tes comptes."
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fr.lecercle.app
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO

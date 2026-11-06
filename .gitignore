@@ -1,0 +1,9 @@
+# Projet Xcode généré par XcodeGen et fichiers de compilation
+*.xcodeproj/
+build/
+Payload/
+*.ipa
+.DS_Store
+# Jamais de clé ni de donnée réelle dans ce dépôt
+*.env
+secrets*
