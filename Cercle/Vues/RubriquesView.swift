@@ -235,13 +235,23 @@ struct EpargneVue: View {
             }.frame(height: 150)
         }
         // Le Livret vient des relevés (solde réel, comme le site) ; les autres supports, des versements nets
-        let lv = magasin.livrets
-        let nets = Dictionary(grouping: ops.map(Calc.compense).filter { $0.cat == .epargne && (lv == nil || $0.sc != "Livret") }, by: \.sc)
-            .map { Classement.Ligne(nom: $0.key, v: $0.value.reduce(0) { $0 + $1.montant }, sous: "versements − retraits depuis le début", sc: $0.key) }
-        let livrets = lv.map { l in l.noms.map { Classement.Ligne(nom: $0, v: l.solde($0, le: J.auj), sous: "solde d'après tes relevés", sc: "Livret") } } ?? []
-        let supports = nets + livrets
         TitreSection(texte: "Mes supports")
-        Classement(lignes: supports.sorted { $0.v > $1.v })
+        Classement(lignes: Self.supports(ops, magasin.livrets))
+    }
+
+    /// Découpé en étapes typées : en une seule expression, le compilateur abandonnait (trop long à vérifier).
+    private static func supports(_ ops: [Operation], _ lv: Livrets?) -> [Classement.Ligne] {
+        let epargne: [Operation] = ops.map(Calc.compense).filter { o in o.cat == .epargne && (lv == nil || o.sc != "Livret") }
+        let groupes: [String: [Operation]] = Dictionary(grouping: epargne, by: { $0.sc })
+        var lignes: [Classement.Ligne] = []
+        for (sc, l) in groupes {
+            let total: Double = l.reduce(0) { $0 + $1.montant }
+            lignes.append(Classement.Ligne(nom: sc, v: total, sous: "versements − retraits depuis le début", sc: sc))
+        }
+        if let lv {
+            for n in lv.noms { lignes.append(Classement.Ligne(nom: n, v: lv.solde(n, le: J.auj), sous: "solde d'après tes relevés", sc: "Livret")) }
+        }
+        return lignes.sorted { $0.v > $1.v }
     }
 }
 
