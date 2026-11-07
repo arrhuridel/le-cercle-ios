@@ -107,7 +107,7 @@ struct AccueilView: View {
             .background(FondView())
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(item: $page) { p in
-                if p == .regle { RegleView() } else { AbonnementsView() }
+                if p == .regle { RegleBullesView() } else { AbonnementsView() }
             }
             .refreshable { await magasin.rafraichir() }
         }
@@ -187,7 +187,7 @@ struct AccueilView: View {
 
 // MARK: - 50-30-20 : trois bulles
 
-struct RegleView: View {
+struct RegleBullesView: View {
     @Environment(Magasin.self) private var magasin
     @State private var choisie: ResumeV3.Famille?
 
