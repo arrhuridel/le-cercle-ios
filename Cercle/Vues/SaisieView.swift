@@ -27,84 +27,70 @@ struct SaisieView: View {
     @State private var enCours = false     // empêche un double enregistrement (double tap, bouton du haut + bouton du bas)
     @State private var livret = ""         // livret visé par un versement ou un retrait
 
+    @State private var reussi = false      // animation de réussite avant la fermeture
+
+    /// Design v3 : tout tient sur un écran, sans défilement. Les réglages rares (compte, devise, répétition) sont dans « Options ».
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Picker("Type", selection: $type) { ForEach(Ref.TypeSaisie.allCases) { Text($0.rawValue).tag($0) } }
-                            .pickerStyle(.segmented)
-                            .onChange(of: type) { _, nt in
-                                // Un raccourci ou une capture règle le type ET la catégorie : on ne garde la catégorie que si elle va avec le type.
-                                guard pret, let s = sc, !nt.themes.contains(where: { $0.nom == s }) else { return }
-                                sc = nil; choixManuel = false; indice = ""
-                            }
-                        Button { noteActive = false } label: {
-                            Text(montantAffiche).font(.system(size: 58, weight: .semibold, design: .rounded)).monospacedDigit()
-                                .foregroundStyle(montant.isEmpty ? .tertiary : .primary).frame(maxWidth: .infinity)
-                                .phaseAnimator([0.0, -10.0, 10.0, 0.0], trigger: secoue) { v, x in v.offset(x: CGFloat(x)) }
-                        }
-                        .buttonStyle(.plain)
-                        Text(indice).font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity).frame(minHeight: 16)
-                        HStack { ForEach([5, 10, 20, 50], id: \.self) { v in Button("\(v) €") { montant = "\(v)" }.puce(false) } }
+            VStack(spacing: 10) {
+                Picker("Type", selection: $type) { ForEach(Ref.TypeSaisie.allCases) { Text($0.rawValue).tag($0) } }
+                    .pickerStyle(.segmented)
+                    .onChange(of: type) { _, nt in
+                        // Un raccourci ou une capture règle le type ET la catégorie : on ne garde la catégorie que si elle va avec le type.
+                        guard pret, let s = sc, !nt.themes.contains(where: { $0.nom == s }) else { return }
+                        sc = nil; choixManuel = false; indice = ""
+                    }
+                Button { noteActive = false } label: {
+                    Text(montantAffiche).font(.system(size: 54, weight: .semibold, design: .rounded)).monospacedDigit()
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                        .foregroundStyle(montant.isEmpty ? .tertiary : .primary).frame(maxWidth: .infinity)
+                        .contentTransition(.numericText())
+                        .phaseAnimator([0.0, -10.0, 10.0, 0.0], trigger: secoue) { v, x in v.offset(x: CGFloat(x)) }
+                }
+                .buttonStyle(.plain)
+                Text(indice.isEmpty ? (sc == nil && type != .virement ? "Choisis une catégorie, puis tape le montant" : "") : indice)
+                    .font(.footnote).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: .infinity).frame(height: 16)
+                // Raccourcis (ou montants rapides quand il n'y en a pas)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
                         if edition == nil && !raccourcis.isEmpty {
-                            Text("Raccourcis").etiquette()
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack { ForEach(raccourcis, id: \.id) { o in Button("\(o.note.isEmpty ? o.sc : o.note) · \(Fmt.eur(o.montant))") { remplir(o) }.puce(false) } }
-                            }
-                        }
-                        HStack {
-                            TextField(type == .virement ? "Note (facultatif)" : "Note (ex. Lidl, cinéma…)", text: $note).focused($noteActive)
-                                .onChange(of: note) { _, n in deviner(n) }
-                            PhotosPicker(selection: $photo, matching: .images) {
-                                Image(systemName: lecture ? "hourglass" : "text.viewfinder")
-                            }
-                            .accessibilityLabel("Lire une capture d'écran ou un ticket")
-                        }
-                        .padding(14).background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 16))
-                        if type == .virement {
-                            Text("De").etiquette()
-                            puces(magasin.comptes, $compte)
-                            Text("Vers").etiquette()
-                            puces(magasin.comptes, $vers)
+                            ForEach(raccourcis, id: \.id) { o in Button("\(o.note.isEmpty ? o.sc : o.note) · \(Fmt.eur(o.montant))") { remplir(o) }.puce(false) }
                         } else {
-                            Text("Catégorie").etiquette()
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                                ForEach(themes, id: \.nom) { t in
-                                    Button { sc = t.nom; choixManuel = true; indice = "" } label: {
-                                        VStack(spacing: 6) { Tuile(sc: t.nom, taille: 34); Text(t.court).font(.caption2).lineLimit(1) }
-                                            .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                            .background(sc == t.nom ? Color.primary.opacity(0.14) : Color.primary.opacity(0.05), in: .rect(cornerRadius: 16))
-                                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(sc == t.nom ? Color.primary.opacity(0.3) : .clear, lineWidth: 1))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .sensoryFeedback(.selection, trigger: sc)
-                            if let noms = nomsLivrets, sc == "Livret" || sc == "Retrait d'épargne" {
-                                Text(sc == "Livret" ? "Vers le livret" : "Depuis le livret").etiquette()
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack { ForEach(noms, id: \.self) { n in Button(n) { livret = n }.puce(livret == n) } }
-                                }
-                            }
-                            Text(type == .depense ? "Payé avec" : type == .revenu ? "Reçu sur" : "Depuis").etiquette()
-                            puces(magasin.comptes, $compte)
-                        }
-                        DatePicker("Date", selection: $date, in: ...Date(), displayedComponents: .date)
-                        if type != .virement {
-                            Menu {
-                                ForEach(Ref.devises, id: \.code) { d in Button("\(d.code) · \(d.symbole)") { devise = d.code } }
-                            } label: { Label(devise == "EUR" ? "Devise : euro" : "Devise : \(devise), convertie en euros", systemImage: "globe") }
-                            .tint(.primary).font(.subheadline)
-                        }
-                        if edition == nil {
-                            Toggle(isOn: $repeter) { VStack(alignment: .leading) { Text("Répéter chaque mois"); Text("Saisie automatique le \(J.comp(date).j) de chaque mois").font(.caption).foregroundStyle(.secondary) } }
+                            ForEach([5, 10, 20, 50], id: \.self) { v in Button("\(v) €") { montant = "\(v)" }.puce(false) }
                         }
                     }
-                    .padding(16)
                 }
+                .scrollClipDisabled()
+                if type == .virement {
+                    ligne("De") { puces(magasin.comptes, $compte) }
+                    ligne("Vers") { puces(magasin.comptes, $vers) }
+                } else {
+                    categories
+                    if let noms = nomsLivrets, sc == "Livret" || sc == "Retrait d'épargne" {
+                        ligne(sc == "Livret" ? "Vers" : "Depuis") {
+                            ScrollView(.horizontal, showsIndicators: false) { HStack { ForEach(noms, id: \.self) { n in Button(n) { livret = n }.puce(livret == n) } } }
+                        }
+                    }
+                }
+                HStack(spacing: 8) {
+                    TextField(type == .virement ? "Note (facultatif)" : "Note : Lidl, cinéma…", text: $note).focused($noteActive)
+                        .onChange(of: note) { _, n in deviner(n) }
+                        .padding(.horizontal, 14).frame(height: 40)
+                        .glassEffect(.regular, in: .capsule)
+                    DatePicker("Date", selection: $date, in: ...Date(), displayedComponents: .date).labelsHidden().tint(.primary)
+                    PhotosPicker(selection: $photo, matching: .images) {
+                        Image(systemName: lecture ? "hourglass" : "text.viewfinder").frame(width: 40, height: 40).glassEffect(.regular.interactive(), in: .circle)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Lire une capture d'écran ou un ticket")
+                    options
+                }
+                Spacer(minLength: 0)
                 if !noteActive { pave }
             }
+            .padding(.horizontal, 16).padding(.top, 4)
+            .background(FondView())
+            .overlay { if reussi { succes } }
             .navigationTitle(edition == nil ? "Nouvelle opération" : "Modifier").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Annuler") { fermer() } }
@@ -114,8 +100,70 @@ struct SaisieView: View {
             }
             .onAppear(perform: preparer)
             .onChange(of: photo) { _, p in if let p { Task { await lireCapture(p) } } }
+            .sensoryFeedback(.success, trigger: reussi)
         }
         .presentationDragIndicator(.visible)
+    }
+
+    /// Les catégories sur une ligne qui défile de côté ; la catégorie choisie est mise en valeur.
+    private var categories: some View {
+        ScrollViewReader { lecteur in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(themes, id: \.nom) { t in
+                        Button { withAnimation(.snappy) { sc = t.nom }; choixManuel = true; indice = "" } label: {
+                            VStack(spacing: 5) { Tuile(sc: t.nom, taille: 32); Text(t.court).font(.caption2.weight(.medium)).lineLimit(1) }
+                                .frame(width: 70, height: 70)
+                                .background(sc == t.nom ? Color.primary.opacity(0.16) : Color.clear, in: .rect(cornerRadius: 18))
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
+                                .scaleEffect(sc == t.nom ? 1.04 : 1)
+                        }
+                        .buttonStyle(.plain)
+                        .id(t.nom)
+                    }
+                }
+                .padding(.vertical, 3)
+            }
+            .scrollClipDisabled()
+            .sensoryFeedback(.selection, trigger: sc)
+            .onChange(of: sc) { _, n in if let n { withAnimation { lecteur.scrollTo(n, anchor: .center) } } }
+        }
+    }
+
+    /// Réglages rares : compte, devise et répétition mensuelle.
+    private var options: some View {
+        Menu {
+            if type != .virement {
+                Picker(type == .depense ? "Payé avec" : type == .revenu ? "Reçu sur" : "Depuis", selection: $compte) {
+                    ForEach(magasin.comptes, id: \.self) { Text(magasin.nomCompte($0)).tag($0) }
+                }
+                Picker("Devise", selection: $devise) {
+                    ForEach(Ref.devises, id: \.code) { d in Text("\(d.code) · \(d.symbole)").tag(d.code) }
+                }
+            }
+            if edition == nil { Toggle("Répéter chaque mois (le \(J.comp(date).j))", isOn: $repeter) }
+        } label: {
+            Image(systemName: repeter || devise != "EUR" ? "slider.horizontal.below.square.filled.and.square" : "slider.horizontal.3")
+                .frame(width: 40, height: 40).glassEffect(.regular.interactive(), in: .circle)
+        }
+        .tint(.primary)
+        .accessibilityLabel("Options : compte, devise, répétition")
+    }
+
+    private func ligne<C: View>(_ titre: String, @ViewBuilder _ c: () -> C) -> some View {
+        HStack(spacing: 10) { Text(titre).etiquette().frame(width: 52, alignment: .leading); c() }
+    }
+
+    private var succes: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "checkmark").font(.system(size: 40, weight: .semibold))
+                .frame(width: 96, height: 96).glassEffect(.regular, in: .circle)
+                .symbolEffect(.bounce, value: reussi)
+            Text("Enregistré").font(.headline)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.ultraThinMaterial)
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
     }
 
     // MARK: Pavé numérique
@@ -126,8 +174,8 @@ struct SaisieView: View {
                 ForEach(["1", "2", "3", "4", "5", "6", "7", "8", "9", ",", "0", "⌫"], id: \.self) { t in
                     Button { touche(t) } label: {
                         Group { if t == "⌫" { Image(systemName: "delete.left") } else { Text(t) } }
-                            .font(.title2.weight(.medium)).frame(maxWidth: .infinity, minHeight: 48)
-                            .background(Color.primary.opacity(0.06), in: .rect(cornerRadius: 16))
+                            .font(.title2.weight(.medium)).frame(maxWidth: .infinity, minHeight: 50)
+                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18)).contentShape(.rect(cornerRadius: 18))
                     }
                     .buttonStyle(.plain)
                 }
@@ -140,7 +188,7 @@ struct SaisieView: View {
             .disabled(enCours)
             .glassEffect(.regular.interactive().tint(.primary.opacity(0.25)), in: .capsule)
         }
-        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 12)
+        .padding(.top, 4).padding(.bottom, 12)
         .sensoryFeedback(.impact(weight: .light), trigger: montant)
     }
 
@@ -281,6 +329,8 @@ struct SaisieView: View {
             }
             Notif.apresAjout(o, magasin: magasin)
         }
+        withAnimation(.spring(duration: 0.35)) { reussi = true }
+        try? await Task.sleep(for: .milliseconds(650))
         fermer()
     }
 }

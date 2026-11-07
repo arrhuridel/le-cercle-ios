@@ -2,45 +2,163 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 
-/// Cercle : groupes de partage (façon Tricount) et Mon espace (réglages, données, sécurité).
+/// Cercle (design v3) : ton solde dans les groupes, la liste des groupes (elle seule défile) et une carte de réglages rapides.
 struct CercleView: View {
+    @Environment(Magasin.self) private var magasin
+    @AppStorage("faceId") private var faceId = false
+    @AppStorage("masque") private var masque = false
+    @AppStorage("theme") private var theme = "sombre"
+    @State private var nouveauGroupe = false
+    @State private var edite: Champ?
+    @State private var saisie = ""
+    enum Champ: String, Identifiable { case budget = "Budget mensuel", objectif = "Objectif d'épargne mensuel"; var id: String { rawValue } }
+
+    var body: some View {
+        NavigationStack {
+            let groupes = magasin.groupes
+            let tot = groupes.reduce(0.0) { r, g in r + solde(g) }
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Tes comptes partagés").font(.subheadline).foregroundStyle(.secondary)
+                        Text("Cercle").font(.largeTitle.bold())
+                    }
+                    Spacer()
+                    if !groupes.isEmpty {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(abs(tot) < 0.005 ? "À jour" : Fmt.eur(tot, signe: true)).font(.title2.bold()).monospacedDigit().foregroundStyle(teinte(tot))
+                            Text(tot > 0.004 ? "on te doit" : tot < -0.004 ? "tu dois" : "tout est réglé").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if groupes.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "person.3").font(.largeTitle).foregroundStyle(.secondary)
+                        Text("Aucun groupe pour l'instant").font(.headline)
+                        Text("Coloc, voyage, soirée : partage une dépense, Le Cercle calcule qui doit quoi.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Button { nouveauGroupe = true } label: { Text("Créer un groupe").font(.headline).frame(maxWidth: .infinity, minHeight: 46).contentShape(.capsule) }
+                            .buttonStyle(.plain).glassEffect(.regular.interactive().tint(.primary.opacity(0.2)), in: .capsule)
+                    }
+                    .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 26))
+                } else {
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            ForEach(groupes) { g in
+                                NavigationLink { GroupeView(groupeId: g.id) } label: { ligneGroupe(g) }.buttonStyle(.plain)
+                            }
+                            Button { nouveauGroupe = true } label: {
+                                HStack(spacing: 10) { Image(systemName: "plus").frame(width: 30, height: 30).background(.white.opacity(0.1), in: .circle); Text("Nouveau groupe").fontWeight(.semibold); Spacer() }
+                                    .padding(14).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .scrollIndicators(.hidden)
+                    .refreshable { await magasin.rafraichir() }
+                }
+                espace
+            }
+            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
+            .background(FondView())
+            .toolbar(.hidden, for: .navigationBar)
+            .sheet(isPresented: $nouveauGroupe) { NouveauGroupeView() }
+            .alert(edite?.rawValue ?? "", isPresented: Binding(get: { edite != nil }, set: { if !$0 { edite = nil } }), presenting: edite) { c in
+                TextField("Montant en euros", text: $saisie).keyboardType(.decimalPad)
+                Button("Enregistrer") { enregistrer(c) }
+                Button("Annuler", role: .cancel) { saisie = "" }
+            } message: { _ in Text("« 0 » enlève la valeur.") }
+            .onAppear { Notif.rappelExpiration() }
+        }
+    }
+
+    private func solde(_ g: GroupeComplet) -> Double { Tricount.moi(g, profil: magasin.profil?.id).map { Tricount.soldes(g)[$0] ?? 0 } ?? 0 }
+    private func teinte(_ v: Double) -> Color { v > 0.004 ? .positif : v < -0.004 ? .negatif : .secondary }
+
+    private func ligneGroupe(_ g: GroupeComplet) -> some View {
+        let s = solde(g)
+        return HStack(spacing: 12) {
+            HStack(spacing: -8) { ForEach(g.participants.prefix(3)) { p in Avatar(nom: p.nom) } }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(g.groupe.nom).fontWeight(.semibold).lineLimit(1)
+                Text("\(g.participants.count) personnes · \(g.depenses.count) dépense\(g.depenses.count > 1 ? "s" : "")").font(.footnote).foregroundStyle(.secondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(abs(s) < 0.005 ? "À jour" : Fmt.eur(s, signe: true)).monospacedDigit().fontWeight(.semibold).foregroundStyle(teinte(s))
+                if abs(s) >= 0.005 { Text(s > 0 ? "on te doit" : "tu dois").font(.caption).foregroundStyle(.secondary) }
+            }
+        }
+        .padding(14).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+    }
+
+    /// Réglages rapides ; le reste est dans « Tous les réglages ».
+    private var espace: some View {
+        VStack(spacing: 0) {
+            ligneBouton("Budget mensuel", (magasin.profil?.budget ?? 0) > 0 ? Fmt.eur(magasin.profil?.budget ?? 0, 0) : "à définir") { saisie = ""; edite = .budget }
+            Divider().opacity(0.4)
+            ligneBouton("Objectif d'épargne", (magasin.profil?.objectifEpargne ?? 0) > 0 ? "\(Fmt.eur(magasin.profil?.objectifEpargne ?? 0, 0)) / mois" : "à définir") { saisie = ""; edite = .objectif }
+            Divider().opacity(0.4)
+            Toggle("Verrouiller avec Face ID", isOn: $faceId).padding(.vertical, 9)
+            Divider().opacity(0.4)
+            Toggle("Masquer les montants", isOn: $masque).padding(.vertical, 9)
+            Divider().opacity(0.4)
+            HStack {
+                Text("Apparence"); Spacer()
+                Picker("Apparence", selection: $theme) { Text("Sombre").tag("sombre"); Text("Clair").tag("clair"); Text("Auto").tag("auto") }.labelsHidden().tint(.secondary)
+            }
+            .padding(.vertical, 3)
+            Divider().opacity(0.4)
+            NavigationLink { MonEspaceView() } label: {
+                HStack { Text("Tous les réglages"); Spacer(); Text("données, membres, compte").font(.footnote).foregroundStyle(.secondary); Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary) }
+                    .padding(.vertical, 11).contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+        }
+        .tint(.positif)
+        .padding(.horizontal, 16).padding(.vertical, 2)
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+
+    private func ligneBouton(_ titre: String, _ valeur: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack { Text(titre); Spacer(); Text(valeur).monospacedDigit().foregroundStyle(.secondary); Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary) }
+                .padding(.vertical, 11).contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Un champ vide ne change rien ; « 0 » tapé exprès enlève la valeur.
+    private func enregistrer(_ c: Champ) {
+        let brut = saisie.filter { !$0.isWhitespace }
+        saisie = ""
+        guard !brut.isEmpty, Double(brut.replacingOccurrences(of: ",", with: ".").replacingOccurrences(of: "€", with: "")) != nil else { return }
+        let v = Fmt.lire(brut)
+        guard v >= 0 else { return }
+        Task {
+            switch c {
+            case .budget: await magasin.majProfil(budget: v)
+            case .objectif: await magasin.majProfil(objectifEpargne: v)
+            }
+        }
+    }
+}
+
+/// Tous les réglages de Mon espace (visibilité, budget, enveloppes, sécurité, données, membres, compte).
+struct MonEspaceView: View {
     @Environment(Magasin.self) private var magasin
     @AppStorage("faceId") private var faceId = false
     @AppStorage("masque") private var masque = false
     @AppStorage("confidentiel") private var confidentiel = false
     @AppStorage("theme") private var theme = "sombre"
     @AppStorage("notifications") private var notifications = true
-    @State private var nouveauGroupe = false
     @State private var confirmerSortie = false
     @State private var budget = ""
     @State private var objectif = ""
 
     var body: some View {
-        NavigationStack {
-            Ecran {
-                TitreSection(texte: "Groupes")
-                ForEach(magasin.groupes) { g in
-                    NavigationLink { GroupeView(groupeId: g.id) } label: {
-                        let moi = Tricount.moi(g, profil: magasin.profil?.id), s = moi.map { Tricount.soldes(g)[$0] ?? 0 } ?? 0
-                        HStack(spacing: 12) {
-                            HStack(spacing: -8) { ForEach(g.participants.prefix(4)) { p in Avatar(nom: p.nom) } }
-                            VStack(alignment: .leading) { Text(g.groupe.nom).fontWeight(.semibold).lineLimit(1); Text("\(g.participants.count) personnes · \(g.depenses.count) dépense(s)").font(.footnote).foregroundStyle(.secondary) }
-                            Spacer()
-                            VStack(alignment: .trailing) {
-                                Text(abs(s) < 0.005 ? "À jour" : Fmt.eur(s, signe: true)).monospacedDigit().fontWeight(.semibold).foregroundStyle(s > 0.004 ? Color.positif : s < -0.004 ? Color.negatif : .secondary)
-                                Text(s > 0.004 ? "on te doit" : s < -0.004 ? "tu dois" : "").font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(14).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
-                    }
-                    .buttonStyle(.plain)
-                }
-                Button { nouveauGroupe = true } label: {
-                    HStack { Pastille(symbole: "plus"); VStack(alignment: .leading) { Text("Nouveau groupe"); Text("Coloc, voyage, soirée…").font(.footnote).foregroundStyle(.secondary) }; Spacer() }
-                        .padding(14).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
-                }
-                .buttonStyle(.plain)
-
+        Ecran {
                 TitreSection(texte: "Mon espace")
                 CarteVerre(espacement: 10) {
                     Text("Visibilité de mon budget").font(.headline)
@@ -80,11 +198,8 @@ struct CercleView: View {
                 Text(magasin.etat == .demo ? "Mode démo : données inventées, rien n'est enregistré." : "Connecté à la base du site : ce que tu ajoutes ici apparaît aussi sur le site.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            .navigationTitle("Cercle")
+            .navigationTitle("Réglages")
             .refreshable { await magasin.rafraichir() }
-            .sheet(isPresented: $nouveauGroupe) { NouveauGroupeView() }
-            .onAppear { Notif.rappelExpiration() }
-        }
     }
 
     private func champ(_ titre: String, _ texte: Binding<String>, valeur: Double?, enregistrer: @escaping (Double) async -> Void) -> some View {
@@ -199,6 +314,12 @@ struct GroupeView: View {
                     .glassEffect(.regular.interactive(), in: .capsule).tint(.primary)
                 Text("Ta part compte dans tes dépenses. Ce que tu avances et les remboursements sont des virements : ils bougent ton compte sans fausser ton budget.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            .safeAreaInset(edge: .bottom) {
+                Button { ajout = true } label: { Label("Ajouter une dépense partagée", systemImage: "plus").font(.headline).frame(maxWidth: .infinity, minHeight: 50).contentShape(.capsule) }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive().tint(.primary.opacity(0.2)), in: .capsule)
+                    .padding(.horizontal, 16).padding(.bottom, 8)
             }
             .navigationTitle(g.groupe.nom)
             .toolbar { Button { ajout = true } label: { Image(systemName: "plus") } }

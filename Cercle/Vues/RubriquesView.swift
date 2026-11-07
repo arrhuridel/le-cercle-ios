@@ -9,10 +9,15 @@ struct RubriqueView: View {
         case .conseiller: ConseillerView()
         case .patrimoine: PatrimoineView()
         default:
-            Ecran { contenu }
+            Ecran {
+                if Self.avecDuree.contains(rubrique) { SelecteurDuree() }
+                contenu
+            }
                 .navigationTitle(rubrique.rawValue).navigationBarTitleDisplayMode(.inline)
         }
     }
+
+    static let avecDuree: Set<Rubrique> = [.ensemble, .depenses, .marchands, .habitudes, .revenus, .epargne, .charges, .jeux, .saisons]
 
     @ViewBuilder private var contenu: some View {
         switch rubrique {
@@ -67,8 +72,9 @@ private func carte<C: View>(_ titre: String, _ sous: String = "", @ViewBuilder _
 
 struct EnsembleVue: View {
     @Environment(Magasin.self) private var magasin
+    @AppStorage(Duree.cle) private var duree: Duree = .douze
     var body: some View {
-        let ops = magasin.toutes, m = Calc.mensuel(ops, 12)
+        let ops = magasin.toutes, m = duree.bilans(ops).map { (mois: $0.t, b: $0.b) }
         carte("Comment respire mon compte ?", "Revenus au-dessus de l'axe, dépenses et épargne en dessous") {
             Chart(m, id: \.mois.cle) { x in
                 BarMark(x: .value("Mois", x.mois.libelle), y: .value("€", x.b.rev)).foregroundStyle(Color.positif)
@@ -103,21 +109,23 @@ struct EnsembleVue: View {
 
 struct DepensesVue: View {
     @Environment(Magasin.self) private var magasin
+    @AppStorage(Duree.cle) private var duree: Duree = .douze
     var body: some View {
-        let ops = magasin.toutes, debut = Calc.moisDerniers(6).first!.debut, opsP = Calc.entre(ops, debut, J.auj)
+        let ops = magasin.toutes, debut = duree.debut(ops), opsP = Calc.entre(ops, debut, J.auj)
         let rep = Calc.repartition(opsP), total = rep.reduce(0) { $0 + $1.v }
-        let nb = max(Double(J.ecart(debut, J.auj) + 1) / Ref.joursParMois, 1)
+        let nb = duree.nbMois(ops)
+        Text("\(Fmt.eur(total, 0)) de dépenses \(duree.texte)").font(.footnote).foregroundStyle(.secondary)
         let mois = Calc.mensuel(ops, 7).filter { !$0.mois.enCours }.suffix(6)
         Classement(lignes: rep.prefix(10).map { e in
             let v = mois.map { m in Calc.entre(ops, m.mois.debut, m.mois.fin).map(Calc.compense).filter { $0.sc == e.sc }.reduce(0) { $0 + $1.montant } }
             let evo = Calc.evolution(Array(v)).map { abs($0) >= 3 ? " · \($0 > 0 ? "↗" : "↘") \(Fmt.pct(abs($0))) sur 3 mois" : "" } ?? ""
             return Classement.Ligne(nom: e.sc, v: e.v, sous: "\(Fmt.pct(e.v / max(total, 1) * 100)) · \(Fmt.eur(e.v / nb, 0)) par mois" + evo, sc: e.sc)
         })
-        carte("Mes 5 postes, mois par mois") {
+        carte(duree == .tout ? "Mes 5 postes, année par année" : "Mes 5 postes, mois par mois") {
             Chart {
-                ForEach(Calc.mensuel(ops, 6), id: \.mois.cle) { m in
+                ForEach(duree.tranches(ops)) { m in
                     ForEach(rep.prefix(5), id: \.sc) { e in
-                        BarMark(x: .value("Mois", m.mois.libelle), y: .value("€", Calc.entre(ops, m.mois.debut, m.mois.fin).map(Calc.compense).filter { $0.sc == e.sc }.reduce(0) { $0 + $1.montant }))
+                        BarMark(x: .value("Mois", m.libelle), y: .value("€", Calc.entre(ops, m.debut, m.fin).map(Calc.compense).filter { $0.sc == e.sc }.reduce(0) { $0 + $1.montant }))
                             .foregroundStyle(Ref.theme(e.sc).teinte)
                     }
                 }
@@ -137,10 +145,11 @@ struct DepensesVue: View {
 
 struct MarchandsVue: View {
     @Environment(Magasin.self) private var magasin
+    @AppStorage(Duree.cle) private var duree: Duree = .douze
     var body: some View {
-        let opsP = Calc.entre(magasin.toutes, Calc.moisDerniers(6).first!.debut, J.auj).filter { $0.cat.estDepense && !["Loyer", "Factures", "Assurances", "Espèces"].contains($0.sc) }
+        let opsP = Calc.entre(magasin.toutes, duree.debut(magasin.toutes), J.auj).filter { $0.cat.estDepense && !["Loyer", "Factures", "Assurances", "Espèces"].contains($0.sc) }
         let g = Dictionary(grouping: opsP, by: Analyse.marchand).map { (nom: $0.key, l: $0.value) }.sorted { $0.l.reduce(0) { $0 + $1.montant } > $1.l.reduce(0) { $0 + $1.montant } }
-        Text("Hors loyer, factures et espèces, sur 6 mois").font(.footnote).foregroundStyle(.secondary)
+        Text("\(opsP.count) achats \(duree.texte), hors loyer, factures, assurances et espèces").font(.footnote).foregroundStyle(.secondary)
         Classement(lignes: g.prefix(15).map { e in
             let s = e.l.reduce(0) { $0 + $1.montant }
             return Classement.Ligne(nom: e.nom, v: s, sous: "\(e.l.count) achat\(e.l.count > 1 ? "s" : "") · panier moyen \(Fmt.eur(s / Double(e.l.count)))", sc: e.l.first?.sc)
@@ -157,8 +166,10 @@ struct MarchandsVue: View {
 
 struct HabitudesVue: View {
     @Environment(Magasin.self) private var magasin
+    @AppStorage(Duree.cle) private var duree: Duree = .douze
     var body: some View {
-        let cour = Calc.courantes(Calc.entre(magasin.toutes, J.plus(J.auj, jours: -182), J.auj))
+        let cour = Calc.courantes(Calc.entre(magasin.toutes, duree.debut(magasin.toutes), J.auj))
+        let nb = duree.nbMois(magasin.toutes)
         let parJour = Dictionary(grouping: cour, by: \.date).mapValues { $0.reduce(0) { $0 + $1.montant } }
         let maxJ = parJour.values.max() ?? 1
         carte("Le calendrier de mes dépenses", "6 derniers mois · plus la case est claire, plus la journée a coûté") {
@@ -172,13 +183,13 @@ struct HabitudesVue: View {
             .frame(height: 85)
         }
         let noms = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
-        carte("Mes jours de dépense", "Dépenses courantes moyennes selon le jour de la semaine") {
-            Chart(0..<7, id: \.self) { i in BarMark(x: .value("Jour", noms[i]), y: .value("€", cour.filter { J.jourSemaine($0.date) == i }.reduce(0) { $0 + $1.montant } / 26)).foregroundStyle(Color(red: 0.44, green: 0.66, blue: 0.64)) }
+        carte("Mes jours de dépense", "Dépenses courantes moyennes par semaine, \(duree.texte)") {
+            Chart(0..<7, id: \.self) { i in BarMark(x: .value("Jour", noms[i]), y: .value("€", cour.filter { J.jourSemaine($0.date) == i }.reduce(0) { $0 + $1.montant } / (nb * 4.345))).foregroundStyle(Color(red: 0.44, green: 0.66, blue: 0.64)) }
                 .frame(height: 150)
         }
         let tiers: [(String, ClosedRange<Int>)] = [("1 au 10", 1...10), ("11 au 20", 11...20), ("21 au 31", 21...31)]
-        carte("Début ou fin de mois ?", "Dépenses courantes moyennes par tiers du mois") {
-            Chart(tiers, id: \.0) { t in BarMark(x: .value("Période", t.0), y: .value("€", cour.filter { t.1.contains(J.comp(J.date($0.date)).j) }.reduce(0) { $0 + $1.montant } / 6)).foregroundStyle(Color(red: 0.76, green: 0.6, blue: 0.43)) }
+        carte("Début ou fin de mois ?", "Dépenses courantes moyennes par mois, \(duree.texte)") {
+            Chart(tiers, id: \.0) { t in BarMark(x: .value("Période", t.0), y: .value("€", cour.filter { t.1.contains(J.comp(J.date($0.date)).j) }.reduce(0) { $0 + $1.montant } / nb)).foregroundStyle(Color(red: 0.76, green: 0.6, blue: 0.43)) }
                 .frame(height: 140)
         }
         let paies = Calc.joursDePaie(magasin.toutes).suffix(4)
@@ -203,13 +214,18 @@ struct HabitudesVue: View {
 
 struct RevenusVue: View {
     @Environment(Magasin.self) private var magasin
+    @AppStorage(Duree.cle) private var duree: Duree = .douze
     var body: some View {
-        let revs = Calc.entre(magasin.toutes, Calc.moisDerniers(12).first!.debut, J.auj).filter { $0.cat == .revenu && Ref.compensations[$0.sc] == nil }
+        let revs = Calc.entre(magasin.toutes, duree.debut(magasin.toutes), J.auj).filter { $0.cat == .revenu && Ref.compensations[$0.sc] == nil }
         let source: (Operation) -> String = { $0.sc == "Salaire" ? Calc.source($0) : $0.sc }
         let tot = revs.reduce(0) { $0 + $1.montant }, sal = revs.filter { $0.sc == "Salaire" }.reduce(0) { $0 + $1.montant }
+        HStack {
+            Kpi(titre: "Total", valeur: Fmt.eur(tot, 0), sous: duree.texte, couleur: .positif)
+            Kpi(titre: "Moyenne", valeur: Fmt.eur(tot / duree.nbMois(magasin.toutes), 0), sous: "par mois")
+        }
         carte("D'où vient mon argent ?", "Chaque employeur à part, comme sur le site") {
             Chart {
-                ForEach(Calc.moisDerniers(12)) { m in
+                ForEach(duree.tranches(magasin.toutes)) { m in
                     ForEach(Array(Set(revs.map(source))).sorted(), id: \.self) { s in
                         BarMark(x: .value("Mois", m.libelle), y: .value("€", revs.filter { source($0) == s && $0.date >= m.debut && $0.date <= m.fin }.reduce(0) { $0 + $1.montant })).foregroundStyle(by: .value("Source", s))
                     }
@@ -217,15 +233,21 @@ struct RevenusVue: View {
             }.frame(height: 200)
         }
         Classement(lignes: Dictionary(grouping: revs, by: source).map { Classement.Ligne(nom: $0.key, v: $0.value.reduce(0) { $0 + $1.montant }, sous: "", sc: $0.value.first?.sc) }.sorted { $0.v > $1.v })
-        Kpi(titre: "Autonomie", valeur: Fmt.pct(tot > 0 ? sal / tot * 100 : 0), sous: "part du salaire dans les revenus sur 12 mois")
+        Kpi(titre: "Autonomie", valeur: Fmt.pct(tot > 0 ? sal / tot * 100 : 0), sous: "part du salaire dans les revenus, \(duree.texte)")
     }
 }
 
 struct EpargneVue: View {
     @Environment(Magasin.self) private var magasin
+    @AppStorage(Duree.cle) private var duree: Duree = .douze
     var body: some View {
-        let ops = magasin.toutes, m = Calc.mensuel(ops, 12)
-        carte("Est-ce que je mets vraiment de côté ?", "Épargne nette de chaque mois : versements moins retraits") {
+        let ops = magasin.toutes, m = duree.bilans(ops).map { (mois: $0.t, b: $0.b) }
+        let tot = m.reduce(0) { $0 + $1.b.epa }
+        HStack {
+            Kpi(titre: "Épargné", valeur: Fmt.eur(tot, 0), sous: duree.texte, couleur: tot >= 0 ? .positif : .negatif)
+            Kpi(titre: "Moyenne", valeur: Fmt.eur(tot / duree.nbMois(ops), 0), sous: "par mois")
+        }
+        carte("Est-ce que je mets vraiment de côté ?", duree == .tout ? "Épargne nette de chaque année : versements moins retraits" : "Épargne nette de chaque mois : versements moins retraits") {
             Chart(m, id: \.mois.cle) { x in BarMark(x: .value("Mois", x.mois.libelle), y: .value("€", x.b.epa)).foregroundStyle(x.b.epa >= 0 ? Color.positif : Color.negatif) }.frame(height: 170)
         }
         carte("Mon taux d'épargne", "Repère : 20 %") {
@@ -257,8 +279,9 @@ struct EpargneVue: View {
 
 struct ChargesVue: View {
     @Environment(Magasin.self) private var magasin
+    @AppStorage(Duree.cle) private var duree: Duree = .douze
     var body: some View {
-        let ops = magasin.toutes, m = Calc.mensuel(ops, 6)
+        let ops = magasin.toutes, m = duree.tranches(ops).map { (mois: $0, b: 0) }
         carte("Charges fixes ou dépenses courantes ?", "Ce qui tombe chaque mois quoi qu'il arrive, et le reste") {
             Chart {
                 ForEach(m, id: \.mois.cle) { x in
@@ -411,14 +434,15 @@ struct ScoreVue: View {
 
 struct JeuxVue: View {
     @Environment(Magasin.self) private var magasin
+    @AppStorage(Duree.cle) private var duree: Duree = .douze
     var body: some View {
-        let j = Calc.entre(magasin.toutes, Calc.moisDerniers(12).first!.debut, J.auj).filter { $0.sc == "Jeux d'argent" || $0.sc == "Gains de jeux" }
+        let j = Calc.entre(magasin.toutes, duree.debut(magasin.toutes), J.auj).filter { $0.sc == "Jeux d'argent" || $0.sc == "Gains de jeux" }
         let mises = j.filter { $0.cat != .revenu }.reduce(0) { $0 + $1.montant }, gains = j.filter { $0.cat == .revenu }.reduce(0) { $0 + $1.montant }
-        if j.isEmpty { CarteVerre { Text("Aucun pari ni gain sur 12 mois.").foregroundStyle(.secondary) } }
+        if j.isEmpty { CarteVerre { Text("Aucun pari ni gain \(duree.texte).").foregroundStyle(.secondary) } }
         else {
-            HStack { Kpi(titre: "Misé", valeur: Fmt.eur(mises, 0), sous: "sur 12 mois"); Kpi(titre: "Résultat net", valeur: Fmt.eur(gains - mises, 0, signe: true), couleur: gains >= mises ? .positif : .negatif) }
+            HStack { Kpi(titre: "Misé", valeur: Fmt.eur(mises, 0), sous: duree.texte); Kpi(titre: "Résultat net", valeur: Fmt.eur(gains - mises, 0, signe: true), couleur: gains >= mises ? .positif : .negatif) }
             carte("Mes jeux d'argent, mois par mois", "Gains au-dessus, mises en dessous") {
-                Chart(Calc.moisDerniers(12)) { m in
+                Chart(duree.tranches(magasin.toutes)) { m in
                     BarMark(x: .value("Mois", m.libelle), y: .value("€", j.filter { $0.cat == .revenu && $0.date >= m.debut && $0.date <= m.fin }.reduce(0) { $0 + $1.montant })).foregroundStyle(Color.positif)
                     BarMark(x: .value("Mois", m.libelle), y: .value("€", -j.filter { $0.cat != .revenu && $0.date >= m.debut && $0.date <= m.fin }.reduce(0) { $0 + $1.montant })).foregroundStyle(Color.negatif)
                 }.frame(height: 180)
@@ -429,11 +453,17 @@ struct JeuxVue: View {
 
 struct SaisonsVue: View {
     @Environment(Magasin.self) private var magasin
+    @AppStorage(Duree.cle) private var duree: Duree = .douze
     var body: some View {
-        let m = Calc.mensuel(magasin.toutes, 24).filter { !$0.mois.enCours && $0.b.dep > 0 }
+        let m = Calc.mensuel(magasin.toutes, duree.moisEntiers(magasin.toutes)).filter { !$0.mois.enCours && $0.b.dep > 0 }
         let parMois = (1...12).map { k -> Double in let l = m.filter { Int($0.mois.cle.suffix(2)) == k }; return l.isEmpty ? 0 : l.reduce(0) { $0 + $1.b.dep } / Double(l.count) }
-        carte("Les mois qui coûtent", "Dépenses moyennes de chaque mois de l'année") {
-            Chart(0..<12, id: \.self) { i in BarMark(x: .value("Mois", J.moisCourts[i]), y: .value("€", parMois[i])).foregroundStyle(Color(red: 0.77, green: 0.56, blue: 0.54)) }.frame(height: 180)
+        let barres: [(cle: String, nom: String, v: Double)] = duree == .tout
+            ? (0..<12).map { (cle: "\($0)", nom: J.moisCourts[$0], v: parMois[$0]) }
+            : m.map { (cle: $0.mois.cle, nom: $0.mois.libelle, v: $0.b.dep) }
+        let plusCher = barres.max { $0.v < $1.v }
+        if let plusCher { Kpi(titre: "Le mois le plus cher", valeur: plusCher.nom, sous: Fmt.eur(plusCher.v, 0)) }
+        carte("Les mois qui coûtent", duree == .tout ? "Dépenses moyennes de chaque mois de l'année" : "Dépenses de chaque mois complet, \(duree.texte)") {
+            Chart(barres, id: \.cle) { b in BarMark(x: .value("Mois", b.nom), y: .value("€", b.v)).foregroundStyle(b.cle == plusCher?.cle ? Color.white : Color(red: 0.77, green: 0.56, blue: 0.54)) }.frame(height: 180)
         }
         Text("La saisonnalité devient fiable avec au moins un an d'historique.").font(.caption).foregroundStyle(.secondary)
     }
