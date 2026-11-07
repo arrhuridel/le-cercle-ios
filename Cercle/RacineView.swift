@@ -43,9 +43,9 @@ struct RacineView: View {
 
     private var onglets: some View {
         TabView(selection: $onglet) {
-            Tab("Résumé", systemImage: "chart.pie", value: Onglet.resume) { ResumeView() }
+            Tab("Résumé", systemImage: "chart.pie", value: Onglet.resume) { AccueilView() }
             Tab("Analyses", systemImage: "chart.bar", value: Onglet.analyses) { AnalysesView() }
-            Tab("Activité", systemImage: "list.bullet", value: Onglet.activite) { ActiviteView() }
+            Tab("Activité", systemImage: "list.bullet", value: Onglet.activite) { ComptesView() }
             Tab("Cercle", systemImage: "person.2", value: Onglet.cercle) { CercleView() }
             // Le rôle « search » place cet onglet à part, dans un bouton rond en verre : c'est notre « + ».
             // Il n'affiche rien : on revient aussitôt à l'onglet précédent et on ouvre la feuille de saisie.
