@@ -2,12 +2,30 @@ import Foundation
 
 /// Reprise des règles de calcul du site (`app.py`) : compensations, bilan, règle 50-30-20, soldes, périodes, prévision.
 enum Calc {
-    /// Vue « calculs » : un remboursement de loyer devient un loyer négatif, un retrait de livret une épargne négative…
+    /// Vue « calculs », comme `compenser` du site : un retrait de livret devient une épargne négative…
+    /// Loyer (règle d'Arthur du 07/11/2026) : avec un colocataire, le loyer compte toujours pour moitié,
+    /// et le « Remboursement loyer » est alors déjà déduit (il compte 0).
     static func compense(_ o: Operation) -> Operation {
+        if o.sc == "Loyer" && o.loyerPartage { var c = o; c.montant = o.montant / 2; c.loyerPartage = false; return c }
+        if o.sc == "Remboursement loyer" { var c = o; c.sc = "Loyer"; c.cat = .besoins; c.montant = 0; return c }
         guard let cible = Ref.compensations[o.sc] else { return o }
         var c = o
         c.sc = cible.0; c.cat = cible.1; c.montant = -o.montant
         return c
+    }
+
+    /// Marque les loyers partagés : un « Remboursement loyer » tombe à 45 jours ou moins (même règle que le site).
+    /// Un loyer payé seul, sans remboursement autour, reste entier.
+    static func marquerLoyers(_ ops: [Operation]) -> [Operation] {
+        let remb = ops.filter { $0.sc == "Remboursement loyer" }.map { J.date($0.date) }
+        guard !remb.isEmpty else { return ops }
+        return ops.map { o in
+            guard o.sc == "Loyer" else { return o }
+            var c = o
+            let d = J.date(o.date)
+            c.loyerPartage = remb.contains { abs($0.timeIntervalSince(d)) <= 45 * 86400 }
+            return c
+        }
     }
 
     struct Bilan {

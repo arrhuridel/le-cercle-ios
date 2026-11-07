@@ -56,7 +56,7 @@ final class Magasin {
     /// Toutes les opérations, y compris celles calculées à partir des groupes.
     var toutes: [Operation] {
         if let c = cacheToutes, c.0 == revision { return c.1 }
-        let t = ops + Tricount.operations(groupes, profil: profil?.id)
+        let t = Calc.marquerLoyers(ops + Tricount.operations(groupes, profil: profil?.id))
         cacheToutes = (revision, t)
         return t
     }

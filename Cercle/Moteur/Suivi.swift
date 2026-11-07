@@ -33,8 +33,9 @@ enum Suivi {
             let med = mediane(ecarts)
             let mensuel = (26...35).contains(med), hebdo = (6...8).contains(med)
             guard mensuel || hebdo, mediane(ecarts.map { abs($0 - med) }) <= (mensuel ? 4 : 1.5) else { continue }
-            let m = mediane(l.map(\.montant))
-            guard mediane(l.map { abs($0.montant - m) }) <= m * 0.2 else { continue }
+            let montants = l.map { $0.loyerPartage ? $0.montant / 2 : $0.montant }   // loyer partagé : ta part seulement
+            let m = mediane(montants)
+            guard mediane(montants.map { abs($0 - m) }) <= m * 0.2 else { continue }
             let dernier = dates.last!, recent = l.first { $0.date == dernier }!, d = J.date(dernier)
             res.append(Recurrent(cle: k, nom: recent.note.components(separatedBy: " · ").first.flatMap { $0.isEmpty ? nil : $0 } ?? recent.sc,
                                  sc: recent.sc, cat: recent.cat, montant: m, mensuel: mensuel, jour: J.comp(d).j, dernier: dernier,

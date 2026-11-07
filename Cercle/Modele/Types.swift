@@ -19,6 +19,8 @@ struct Operation: Codable, Identifiable, Hashable {
     var creeLe: String?
     /// Lien vers un groupe : seulement pour les opérations calculées à partir du Tricount (jamais stockées).
     var partage: LienPartage? = nil
+    /// Loyer payé avec un colocataire qui en rembourse une part : compté pour moitié (jamais stocké, calculé au chargement).
+    var loyerPartage = false
 
     enum CodingKeys: String, CodingKey {
         case id, montant, compte, source, statut, devise
