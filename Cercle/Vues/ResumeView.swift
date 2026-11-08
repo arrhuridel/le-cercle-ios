@@ -51,7 +51,7 @@ struct ResumeView: View {
                 if let r = Conseil.recommandations(t).first {
                     NavigationLink { ConseillerView() } label: {
                         CarteVerre {
-                            Label("Conseil", systemImage: "sparkles").font(.headline)
+                            Label("Conseil", systemImage: "lightbulb").font(.headline)
                             Text(r.texte).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.leading)
                         }
                     }
@@ -61,7 +61,8 @@ struct ResumeView: View {
             .navigationTitle("Résumé")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { masque.toggle() } label: { Image(systemName: masque ? "eye.slash" : "eye") }
+                    Button { masque.toggle() } label: { Image(systemName: masque ? "eye.slash" : "eye").frame(width: 44, height: 44).contentShape(.rect) }
+                        .accessibilityLabel(masque ? "Afficher les montants" : "Masquer les montants")
                 }
             }
             .refreshable { await magasin.rafraichir() }

@@ -123,7 +123,7 @@ struct PatrimoineView: View {
         Ecran {
             CarteVerre {
                 Text("Patrimoine net").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
-                Text(Fmt.eur(comptes + livrets + placements, 0)).font(.system(size: 38, weight: .bold)).monospacedDigit().frame(maxWidth: .infinity)
+                Text(Fmt.eur(comptes + livrets + placements, 0)).grandChiffre(38, design: .default).frame(maxWidth: .infinity)
                 Text("comptes \(Fmt.eur(comptes, 0)) · épargne livret \(Fmt.eur(livrets, 0)) · placements \(Fmt.eur(placements, 0))").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
             }
             CarteVerre {

@@ -484,7 +484,7 @@ struct RapportVue: View {
                 CarteVerre {
                     Text("Rapport mensuel").font(.footnote).foregroundStyle(.secondary)
                     Text(m.mois.long.capitalizedPremiere).font(.title.weight(.bold))
-                    Text(Fmt.eur(m.b.dep, 0)).font(.system(size: 40, weight: .bold)).monospacedDigit()
+                    Text(Fmt.eur(m.b.dep, 0)).grandChiffre(40, design: .default)
                     if let p, p.b.dep > 0 { Text("dépensés · \(m.b.dep >= p.b.dep ? "+" : "−")\(Fmt.pct(abs(m.b.dep - p.b.dep) / p.b.dep * 100)) par rapport à \(p.mois.libelle)").font(.footnote).foregroundStyle(.secondary) }
                 }
                 HStack { Kpi(titre: "Revenus", valeur: Fmt.eur(m.b.rev, 0)); Kpi(titre: "Épargne", valeur: Fmt.eur(m.b.epa, 0), couleur: m.b.epa < 0 ? .negatif : .positif) }

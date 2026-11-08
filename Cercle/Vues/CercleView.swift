@@ -251,7 +251,7 @@ struct GroupeView: View {
             Ecran {
                 CarteVerre {
                     Text("Ton solde").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
-                    Text(abs(s) < 0.005 ? Fmt.eur(0) : Fmt.eur(s, signe: true)).font(.system(size: 40, weight: .bold)).monospacedDigit()
+                    Text(abs(s) < 0.005 ? Fmt.eur(0) : Fmt.eur(s, signe: true)).grandChiffre(40, design: .default)
                         .foregroundStyle(s > 0.004 ? Color.positif : s < -0.004 ? Color.negatif : .primary).frame(maxWidth: .infinity)
                     Text(s > 0.004 ? "On te doit cette somme" : s < -0.004 ? "Tu dois cette somme" : "Tout est réglé").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
                 }
@@ -322,7 +322,7 @@ struct GroupeView: View {
                     .padding(.horizontal, 16).padding(.bottom, 8)
             }
             .navigationTitle(g.groupe.nom)
-            .toolbar { Button { ajout = true } label: { Image(systemName: "plus") } }
+            .toolbar { Button { ajout = true } label: { Image(systemName: "plus") }.accessibilityLabel("Ajouter une dépense partagée") }
             .sheet(isPresented: $ajout) { DepensePartageeView(groupe: g) }
             .confirmationDialog(aSupprimer?.titre ?? "", isPresented: Binding(get: { aSupprimer != nil }, set: { if !$0 { aSupprimer = nil } }), titleVisibility: .visible, presenting: aSupprimer) { x in
                 Button("Supprimer", role: .destructive) {
@@ -592,6 +592,7 @@ struct DonneesView: View {
                 Button { importCSV = true } label: { Label("Importer un relevé CSV", systemImage: "tablecells") }
                 PhotosPicker(selection: $photo, matching: .images) { Label("Capture d'écran ou ticket", systemImage: "text.viewfinder") }
                 if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
+                Text("Formats lus : Crédit Mutuel / CIC, Boursobank, Revolut. Trade Republic ne donne que des relevés PDF : saisis ces opérations à la main.").font(.caption).foregroundStyle(.secondary)
             }
             if !lignes.isEmpty {
                 Section("À valider : \(lignes.filter(\.garder).count) sur \(lignes.count)") {
@@ -615,7 +616,7 @@ struct DonneesView: View {
                                     ForEach(Ref.themes.filter { $0.cat != .virement && ($0.cat == .revenu) == (l.montant > 0) }, id: \.nom) { Text($0.nom).tag($0.nom) }
                                 }
                                 .labelsHidden().tint(.primary).pickerStyle(.menu).buttonStyle(.borderless)
-                                Text(l.doublon.map { "déjà saisie : \($0)" } ?? l.source).badge(l.doublon == nil ? .secondary : .alerte)
+                                Text(l.doublon.map { $0.hasPrefix("peut-être") || $0.hasPrefix("saisie nette") ? $0 : "déjà saisie : \($0)" } ?? l.source).badge(l.doublon == nil ? .secondary : .alerte)
                             }
                         }
                     }
@@ -650,8 +651,14 @@ struct DonneesView: View {
             defer { if acces { url.stopAccessingSecurityScopedResource() } }
             do {
                 let res = try Import.lireCSV(try Data(contentsOf: url))
+                if Import.estLivret(res.lignes) {
+                    lignes = []; brutes = []
+                    message = "C'est le relevé d'un livret : importe-le depuis le site (onglet Opérations, Importer). Il met à jour le solde du livret au lieu de créer des dépenses."
+                    return
+                }
+                if res.format == "Boursobank" || res.format == "Revolut", let c = magasin.comptes.first(where: { $0.lowercased().contains(res.format.lowercased()) }) { compte = c }
                 preparer(res.lignes)
-                message = "Relevé lu : \(res.lignes.count) lignes, format \(res.format)."
+                message = "Relevé \(res.format) lu : \(res.lignes.count) lignes. Vérifie le compte ci-dessous."
             } catch { message = error.localizedDescription }
         }
         .onChange(of: photo) { _, p in
@@ -680,9 +687,32 @@ struct DonneesView: View {
             if let j = jour.jour, let m = jour.mois { let c = J.comp(J.date(l.date)); let d = J.faire(c.a - (m > c.m ? 1 : 0), m, j); if J.iso(d) <= l.date { l.date = J.iso(d) } }
             if let d = magasin.toutes.first(where: { o in !pris.contains(o.id) && abs(abs(Calc.effet(o, compte)) - abs(l.montant)) < 0.005 && (Calc.effet(o, compte) > 0) == (l.montant > 0) && abs(J.ecart(o.date, l.date)) <= 5 }) {
                 pris.insert(d.id); l.doublon = d.note.isEmpty ? d.sc : d.note; l.garder = false
+            } else {
+                // Peut-être déjà saisie : même marchand, même sens, à 4 jours près, avec un autre montant (montant net, par exemple)
+                let m = Import.mots(l.libelle)
+                if !m.isEmpty, let d = magasin.toutes.first(where: { memeMarchand($0, l, m) }) {
+                    l.doublon = "peut-être : \(d.note.isEmpty ? d.sc : d.note) (\(Fmt.eur(d.montant)))"; l.garder = false
+                }
             }
             return l
         }
+        // Saisies nettes ou groupées : des lignes restantes qui, ensemble, font une opération déjà saisie et pas encore reconnue
+        guard let debut = lignes.map(\.date).min(), let fin = lignes.map(\.date).max() else { return }
+        var restantes = lignes.enumerated().filter { $0.element.doublon == nil || $0.element.doublon!.hasPrefix("peut-être") }.map { (i: $0.offset, date: $0.element.date, montant: $0.element.montant) }
+        for o in magasin.toutes where !pris.contains(o.id) && o.date >= J.plus(debut, jours: -6) && o.date <= J.plus(fin, jours: 6) {
+            let e = Calc.effet(o, compte)
+            guard abs(e) > 0.004, let combo = Import.nettes(restantes, cible: (o.date, (e * 100).rounded() / 100)) else { continue }
+            pris.insert(o.id)
+            restantes.removeAll { combo.contains($0.i) }
+            for i in combo { lignes[i].doublon = "saisie nette ou groupée : \(o.note.isEmpty ? o.sc : o.note) (\(Fmt.eur(o.montant)))"; lignes[i].garder = false }
+        }
+    }
+
+    /// Même marchand, même sens, à 4 jours près (le montant peut différer : saisie nette, par exemple).
+    private func memeMarchand(_ o: Operation, _ l: Import.Ligne, _ m: Set<String>) -> Bool {
+        let e = Calc.effet(o, compte)
+        guard abs(e) > 0.004, (e > 0) == (l.montant > 0), abs(J.ecart(o.date, l.date)) <= 4 else { return false }
+        return !m.isDisjoint(with: Import.mots(o.note + " " + Conseil.marchand(o)))
     }
 
     /// Ajoute les lignes cochées. Si la base refuse, rien n'est ajouté, les lignes restent à l'écran et le message le dit.

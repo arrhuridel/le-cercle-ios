@@ -73,6 +73,13 @@ jobs:
         run: |
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/Cercle.app Payload/
+          # Signature « ad hoc » qui inscrit les droits (espace partagé app ↔ widgets) dans l'app et les widgets ;
+          # Sideloadly re-signe ensuite avec ton Apple ID en reprenant ces droits.
+          if [ -d Payload/Cercle.app/PlugIns/CercleWidgets.appex ]; then
+            codesign -f -s - --entitlements Support/CercleWidgets.entitlements Payload/Cercle.app/PlugIns/CercleWidgets.appex
+          fi
+          codesign -f -s - --entitlements Support/Cercle.entitlements Payload/Cercle.app
+          codesign -d --entitlements - Payload/Cercle.app 2>/dev/null | grep -A2 application-groups || true
           zip -qry Cercle.ipa Payload
           ls -lh Cercle.ipa
 

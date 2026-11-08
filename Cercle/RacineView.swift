@@ -27,6 +27,13 @@ struct RacineView: View {
             }
         }
         .preferredColorScheme(theme == "clair" ? .light : theme == "auto" ? nil : .dark)
+        // Liens des widgets : lecercle://ajouter ouvre la saisie, lecercle://reste revient au Résumé
+        .onOpenURL { url in
+            switch url.host {
+            case "ajouter": saisieOuverte = true
+            default: onglet = .resume
+            }
+        }
         // Verrou, et cache dans le sélecteur d'apps (état « inactif ») pour que les montants ne s'y voient pas
         .overlay { if verrouille || (faceId && phase != .active && !authEnCours) { verrou } }
         .task {
@@ -58,6 +65,7 @@ struct RacineView: View {
         }
         .sensoryFeedback(.selection, trigger: onglet)
         .sheet(isPresented: $saisieOuverte) { SaisieView() }
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)   // texte réglable jusqu'à XXL (revue de design du 08/11)
     }
 
     /// Écran de verrouillage : flou, Face ID (ou le code de l'iPhone en secours).

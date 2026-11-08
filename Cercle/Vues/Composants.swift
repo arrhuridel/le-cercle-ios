@@ -144,6 +144,24 @@ extension Text {
 }
 
 /// Fond d'écran commun : le dégradé qui dérive, sous un contenu défilant.
+/// Grand chiffre (montant principal d'un écran) : sa taille suit le réglage « Taille du texte » de l'iPhone
+/// (@ScaledMetric, comme le recommande Apple) et rétrécit plutôt que de déborder.
+struct GrandChiffre: ViewModifier {
+    @ScaledMetric(relativeTo: .largeTitle) private var taille: CGFloat
+    let poids: Font.Weight
+    let design: Font.Design
+    init(_ taille: CGFloat, poids: Font.Weight, design: Font.Design) { _taille = ScaledMetric(wrappedValue: taille, relativeTo: .largeTitle); self.poids = poids; self.design = design }
+    func body(content: Content) -> some View {
+        content.font(.system(size: taille, weight: poids, design: design)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.5)
+    }
+}
+
+extension View {
+    func grandChiffre(_ taille: CGFloat, poids: Font.Weight = .bold, design: Font.Design = .rounded) -> some View {
+        modifier(GrandChiffre(taille, poids: poids, design: design))
+    }
+}
+
 struct Ecran<Contenu: View>: View {
     @ViewBuilder let contenu: Contenu
     var body: some View {

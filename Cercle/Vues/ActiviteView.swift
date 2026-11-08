@@ -125,7 +125,7 @@ struct DetailOperation: View {
                 Section {
                     VStack(spacing: 10) {
                         Tuile(sc: op.sc, taille: 56)
-                        Text(Fmt.eur(op.cat == .revenu ? op.montant : -op.montant, signe: op.cat != .virement)).font(.system(size: 40, weight: .semibold)).monospacedDigit()
+                        Text(Fmt.eur(op.cat == .revenu ? op.montant : -op.montant, signe: op.cat != .virement)).grandChiffre(40, poids: .semibold, design: .default).monospacedDigit()
                         Text(op.note.isEmpty ? op.sc : op.note).font(.headline)
                     }
                     .frame(maxWidth: .infinity)

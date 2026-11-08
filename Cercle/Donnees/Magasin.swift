@@ -406,6 +406,7 @@ final class Magasin {
         guard etat == .connecte else { return }
         // Protection iOS : le fichier est chiffré et illisible tant que l'iPhone est verrouillé
         try? JSONEncoder().encode(instantane).write(to: Self.fichierCopie, options: [.atomic, .completeFileProtection])
+        publierWidgets()   // les widgets suivent chaque mise à jour et chaque saisie
     }
     private func lireCopieLocale() {
         guard let d = try? Data(contentsOf: Self.fichierCopie), let i = try? JSONDecoder().decode(Instantane.self, from: d) else { return }

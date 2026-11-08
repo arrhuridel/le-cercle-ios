@@ -23,6 +23,11 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+      - target: CercleWidgets      # les widgets sont rangés dans l'app (dossier PlugIns)
+    entitlements:
+      path: Support/Cercle.entitlements
+      properties:
+        com.apple.security.application-groups: [group.fr.lecercle.app]   # espace partagé avec les widgets
     info:
       path: Support/Info.plist
       properties:
@@ -35,6 +40,10 @@ targets:
         NSPhotoLibraryUsageDescription: "Pour lire les montants sur une capture d'écran ou un ticket."
         NSCameraUsageDescription: "Pour photographier un ticket."
         ITSAppUsesNonExemptEncryption: false
+        # lecercle://ajouter et lecercle://reste : liens ouverts depuis les widgets
+        CFBundleURLTypes:
+          - CFBundleURLName: fr.lecercle.app
+            CFBundleURLSchemes: [lecercle]
         # Remplis au moment de la fabrication par le workflow GitHub (secrets) ; vides dans le dépôt
         SupabaseURL: ""
         SupabaseKey: ""
@@ -43,3 +52,29 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: fr.lecercle.app
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: NO
+
+  # Widgets (écran d'accueil et écran verrouillé). Ils lisent les chiffres déposés par l'app dans l'espace partagé.
+  CercleWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widgets
+      - Cercle/Partage
+    entitlements:
+      path: Support/CercleWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.fr.lecercle.app]
+    info:
+      path: Support/Widgets-Info.plist
+      properties:
+        CFBundleDisplayName: Le Cercle
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fr.lecercle.app.widgets
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES

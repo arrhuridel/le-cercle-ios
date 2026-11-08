@@ -91,7 +91,9 @@ enum Import {
         guard let iTete = rows.firstIndex(where: { $0.contains { $0.sansAccents.contains("date") } }) else { throw ErreurImport.colonnes }
         let tete = rows[iTete].map(\.sansAccents)
         func col(_ ok: (String) -> Bool) -> Int? { tete.firstIndex(where: ok) }
-        let cDate = col { $0.hasPrefix("date") && !$0.contains("valeur") } ?? 0
+        // Revolut : « Completed Date » (jour où l'opération est passée) ; Boursobank : « dateOp » ; Crédit Mutuel : « Date »
+        let cDate = col { $0.contains("completed date") } ?? col { $0.contains("date") && !$0.contains("valeur") } ?? 0
+        let cFrais = col { $0 == "fee" }, cEtat = col { $0 == "state" }
         let cLib = col { c in ["libell", "description", "label", "intitul", "nom", "note", "name"].contains { c.contains($0) } }
         let cDeb = col { $0.hasPrefix("debit") }, cCre = col { $0.hasPrefix("credit") }, cMnt = col { $0.hasPrefix("montant") || $0.contains("amount") || $0 == "valeur" }
         guard let cL = cLib, cMnt != nil || cDeb != nil || cCre != nil else { throw ErreurImport.colonnes }
@@ -112,12 +114,43 @@ enum Import {
         var out: [Ligne] = []
         for r in rows.dropFirst(iTete + 1) where r.count > max(cDate, cL) {
             guard let d = dater(r[cDate]) else { continue }
-            let v: Double = cMnt.map { nombre(r[safe: $0] ?? "") } ?? (nombre(r[safe: cCre ?? -1] ?? "") - abs(nombre(r[safe: cDeb ?? -1] ?? "")))
+            if let e = cEtat, let etat = r[safe: e], !etat.isEmpty, etat.uppercased() != "COMPLETED" { continue }   // Revolut : annulée ou en attente
+            var v: Double = cMnt.map { nombre(r[safe: $0] ?? "") } ?? (nombre(r[safe: cCre ?? -1] ?? "") - abs(nombre(r[safe: cDeb ?? -1] ?? "")))
+            if let f = cFrais { v -= abs(nombre(r[safe: f] ?? "")) }   // Revolut : frais à part
             if abs(v) < 0.005 { continue }
             out.append(Ligne(date: d, libelle: r[cL], montant: (v * 100).rounded() / 100))
         }
-        return (out, tete.joined(separator: ";").contains("date de valeur") ? "Crédit Mutuel / CIC" : "générique")
+        let t = tete.joined(separator: ";")
+        let format = t.contains("dateop") && t.contains("accountbalance") ? "Boursobank"
+            : t.contains("started date") ? "Revolut" : t.contains("date de valeur") ? "Crédit Mutuel / CIC" : "générique"
+        return (out, format)
     }
+    /// Relevé d'un livret (virements avec le compte courant et intérêts) : il ne s'importe pas comme des dépenses.
+    static func estLivret(_ l: [Ligne]) -> Bool {
+        guard !l.isEmpty else { return false }
+        let n = l.filter { cherche("^VIR C/C|^VIR DE M|INTERETS|LIVRET", norm($0.libelle)) }.count
+        return Double(n) >= 0.8 * Double(l.count)
+    }
+
+    /// Saisie nette ou groupée : 2 ou 3 lignes du relevé, à 6 jours près, dont la somme signée donne une opération déjà saisie
+    /// (McDo 21,55 − Wero 4 − Wero 6,60 = 10,95 saisis ; casino 40 + 50 = 90 saisis). Renvoie les indices des lignes.
+    static func nettes(_ lignes: [(i: Int, date: String, montant: Double)], cible: (date: String, montant: Double)) -> [Int]? {
+        let proches = Array(lignes.filter { abs(J.ecart($0.date, cible.date)) <= 6 }.prefix(12))
+        let n = proches.count
+        for a in 0..<n { for b in (a + 1)..<n {
+            if abs(proches[a].montant + proches[b].montant - cible.montant) < 0.005 { return [proches[a].i, proches[b].i] }
+        } }
+        for a in 0..<n { for b in (a + 1)..<n { for c in (b + 1)..<n {
+            if abs(proches[a].montant + proches[b].montant + proches[c].montant - cible.montant) < 0.005 { return [proches[a].i, proches[b].i, proches[c].i] }
+        } } }
+        return nil
+    }
+
+    /// Mots significatifs d'un libellé ou d'une note, pour reconnaître le même marchand.
+    static func mots(_ t: String) -> Set<String> {
+        Set(norm(t).components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 3 && $0.rangeOfCharacter(from: .decimalDigits) == nil && !motsVides.contains($0) })
+    }
+
     enum ErreurImport: LocalizedError { case vide, colonnes
         var errorDescription: String? { self == .vide ? "Fichier vide." : "Colonnes date, libellé ou montant introuvables." }
     }

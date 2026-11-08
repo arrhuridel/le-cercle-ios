@@ -27,6 +27,7 @@ struct SaisieView: View {
     @State private var enCours = false     // empêche un double enregistrement (double tap, bouton du haut + bouton du bas)
     @State private var livret = ""         // livret visé par un versement ou un retrait
 
+    @Environment(\.accessibilityReduceMotion) private var reduire
     @State private var reussi = false      // animation de réussite avant la fermeture
 
     /// Design v3 : tout tient sur un écran, sans défilement. Les réglages rares (compte, devise, répétition) sont dans « Options ».
@@ -41,11 +42,11 @@ struct SaisieView: View {
                         sc = nil; choixManuel = false; indice = ""
                     }
                 Button { noteActive = false } label: {
-                    Text(montantAffiche).font(.system(size: 54, weight: .semibold, design: .rounded)).monospacedDigit()
+                    Text(montantAffiche).grandChiffre(54, poids: .semibold)
                         .lineLimit(1).minimumScaleFactor(0.5)
                         .foregroundStyle(montant.isEmpty ? .tertiary : .primary).frame(maxWidth: .infinity)
                         .contentTransition(.numericText())
-                        .phaseAnimator([0.0, -10.0, 10.0, 0.0], trigger: secoue) { v, x in v.offset(x: CGFloat(x)) }
+                        .phaseAnimator(reduire ? [0.0] : [0.0, -8.0, 8.0, 0.0], trigger: secoue) { v, x in v.offset(x: CGFloat(x)) } animation: { _ in .linear(duration: 0.06) }
                 }
                 .buttonStyle(.plain)
                 Text(indice.isEmpty ? (sc == nil && type != .virement ? "Choisis une catégorie, puis tape le montant" : "") : indice)
@@ -158,7 +159,6 @@ struct SaisieView: View {
         VStack(spacing: 12) {
             Image(systemName: "checkmark").font(.system(size: 40, weight: .semibold))
                 .frame(width: 96, height: 96).glassEffect(.regular, in: .circle)
-                .symbolEffect(.bounce, value: reussi)
             Text("Enregistré").font(.headline)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -329,7 +329,7 @@ struct SaisieView: View {
             }
             Notif.apresAjout(o, magasin: magasin)
         }
-        withAnimation(.spring(duration: 0.35)) { reussi = true }
+        withAnimation(reduire ? nil : .smooth(duration: 0.25)) { reussi = true }
         try? await Task.sleep(for: .milliseconds(650))
         fermer()
     }

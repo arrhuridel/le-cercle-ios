@@ -21,6 +21,7 @@ struct Anneau: View {
     let couleur: Color
     var epaisseur: CGFloat = 6
     @State private var vu = false
+    @Environment(\.accessibilityReduceMotion) private var reduire
     var body: some View {
         ZStack {
             Circle().stroke(.white.opacity(0.1), lineWidth: epaisseur)
@@ -28,7 +29,7 @@ struct Anneau: View {
                 .stroke(couleur, style: StrokeStyle(lineWidth: epaisseur, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
-        .onAppear { withAnimation(.spring(response: 1.1, dampingFraction: 0.85)) { vu = true } }
+        .onAppear { withAnimation(reduire ? nil : .smooth(duration: 0.5)) { vu = true } }   // remplissage calme, sans rebond
     }
 }
 
@@ -93,7 +94,8 @@ struct AccueilView: View {
                         Text(salutation).font(.largeTitle.bold())
                     }
                     Spacer()
-                    Button { masque.toggle() } label: { Image(systemName: masque ? "eye.slash" : "eye").frame(width: 40, height: 40) }
+                    Button { masque.toggle() } label: { Image(systemName: masque ? "eye.slash" : "eye").frame(width: 44, height: 44).contentShape(.rect) }
+                        .accessibilityLabel(masque ? "Afficher les montants" : "Masquer les montants")
                         .buttonStyle(.plain).glassEffect(.regular.interactive(), in: .circle)
                 }
                 if magasin.etat == .demo { Text("Mode démo : données inventées").badge(.alerte) }
@@ -126,7 +128,7 @@ struct AccueilView: View {
             CarteV3(espacement: 10) {
                 Text("Il te reste jusqu'au \(J.court(t.per.finBudget))").font(.subheadline).foregroundStyle(.secondary)
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(Fmt.eur(r.reste, 0)).font(.system(size: 54, weight: .bold, design: .rounded)).monospacedDigit()
+                    Text(Fmt.eur(r.reste, 0)).grandChiffre(54)
                         .foregroundStyle(r.reste < 0 ? Color.negatif : .primary).lineLimit(1).minimumScaleFactor(0.6)
                     Text("sur \(Fmt.eur(r.budget, 0))").foregroundStyle(.secondary)
                 }

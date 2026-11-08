@@ -10,7 +10,7 @@ enum Rubrique: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var symbole: String {
         switch self {
-        case .conseiller: "sparkles"; case .score: "heart.text.square"; case .rapport: "doc.text"; case .ensemble: "chart.bar"
+        case .conseiller: "lightbulb"; case .score: "heart.text.square"; case .rapport: "doc.text"; case .ensemble: "chart.bar"
         case .depenses: "chart.pie"; case .marchands: "storefront"; case .habitudes: "calendar"; case .revenus: "briefcase"
         case .epargne: "banknote"; case .patrimoine: "building.columns"; case .charges: "repeat"; case .comparer: "arrow.left.arrow.right"
         case .anomalies: "magnifyingglass"; case .simulations: "slider.horizontal.3"; case .jeux: "dice"; case .saisons: "sun.max"
@@ -71,7 +71,7 @@ struct AnalysesView: View {
                 if let reco {
                     NavigationLink { ConseillerView() } label: {
                         HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "sparkles").frame(width: 34, height: 34).background(.white.opacity(0.1), in: .rect(cornerRadius: 11))
+                            Image(systemName: "lightbulb").frame(width: 34, height: 34).background(.white.opacity(0.1), in: .rect(cornerRadius: 11))
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Le conseil du moment").font(.subheadline.weight(.semibold))
                                 Text(reco.texte).font(.footnote).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading)

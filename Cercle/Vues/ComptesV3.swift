@@ -78,7 +78,7 @@ struct ComptesView: View {
                     VStack(alignment: .leading, spacing: 2) { Text("Tous tes comptes").font(.subheadline).foregroundStyle(.secondary); Text("Activité").font(.largeTitle.bold()) }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
-                        NavigationLink { ActiviteView() } label: { Label("Toutes les opérations", systemImage: "list.bullet").labelStyle(.iconOnly).frame(width: 36, height: 36) }
+                        NavigationLink { ActiviteView() } label: { Label("Toutes les opérations", systemImage: "list.bullet").labelStyle(.iconOnly).frame(width: 44, height: 44).contentShape(.rect) }
                             .buttonStyle(.plain).glassEffect(.regular.interactive(), in: .circle)
                         Text(Fmt.eur(total, 0)).font(.title2.bold()).monospacedDigit()
                     }

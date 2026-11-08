@@ -52,7 +52,7 @@ struct ConseillerView: View {
                     }
                     HStack {
                         TextField("Pose ta question…", text: $question).submitLabel(.send).onSubmit { envoyer(question) }
-                        Button { envoyer(question) } label: { Image(systemName: "arrow.up.circle.fill").font(.title2) }.tint(.primary).disabled(question.isEmpty || reflechit)
+                        Button { envoyer(question) } label: { Image(systemName: "arrow.up.circle.fill").font(.title2).frame(width: 44, height: 44) }.accessibilityLabel("Envoyer la question").tint(.primary).disabled(question.isEmpty || reflechit)
                     }
                     .padding(12).background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 16))
                 }
