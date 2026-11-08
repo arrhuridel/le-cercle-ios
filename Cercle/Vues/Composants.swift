@@ -8,7 +8,7 @@ struct CarteVerre<Contenu: View>: View {
         VStack(alignment: .leading, spacing: espacement) { contenu }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+            .glassEffect(.clear, in: .rect(cornerRadius: 24))
     }
 }
 
@@ -85,7 +85,7 @@ struct Kpi: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .glassEffect(.clear, in: .rect(cornerRadius: 22))
     }
 }
 

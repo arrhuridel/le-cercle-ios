@@ -40,10 +40,10 @@ struct CercleView: View {
                         Text("Aucun groupe pour l'instant").font(.headline)
                         Text("Coloc, voyage, soirée : partage une dépense, Le Cercle calcule qui doit quoi.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         Button { nouveauGroupe = true } label: { Text("Créer un groupe").font(.headline).frame(maxWidth: .infinity, minHeight: 46).contentShape(.capsule) }
-                            .buttonStyle(.plain).glassEffect(.regular.interactive().tint(.primary.opacity(0.2)), in: .capsule)
+                            .buttonStyle(.plain).glassEffect(.clear.interactive().tint(.primary.opacity(0.2)), in: .capsule)
                     }
                     .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 26))
+                    .glassEffect(.clear, in: .rect(cornerRadius: 26))
                 } else {
                     ScrollView {
                         VStack(spacing: 10) {
@@ -52,7 +52,7 @@ struct CercleView: View {
                             }
                             Button { nouveauGroupe = true } label: {
                                 HStack(spacing: 10) { Image(systemName: "plus").frame(width: 30, height: 30).background(.white.opacity(0.1), in: .circle); Text("Nouveau groupe").fontWeight(.semibold); Spacer() }
-                                    .padding(14).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+                                    .padding(14).glassEffect(.clear.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
                             }
                             .buttonStyle(.plain)
                         }
@@ -94,7 +94,7 @@ struct CercleView: View {
                 if abs(s) >= 0.005 { Text(s > 0 ? "on te doit" : "tu dois").font(.caption).foregroundStyle(.secondary) }
             }
         }
-        .padding(14).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+        .padding(14).glassEffect(.clear.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
     }
 
     /// Réglages rapides ; le reste est dans « Tous les réglages ».
@@ -121,7 +121,7 @@ struct CercleView: View {
         }
         .tint(.positif)
         .padding(.horizontal, 16).padding(.vertical, 2)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .glassEffect(.clear, in: .rect(cornerRadius: 24))
     }
 
     private func ligneBouton(_ titre: String, _ valeur: String, action: @escaping () -> Void) -> some View {
@@ -325,14 +325,14 @@ struct GroupeView: View {
                     }
                 }
                 ShareLink(item: bilan(g, soldes)) { Label("Partager le bilan", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity).padding(.vertical, 12) }
-                    .glassEffect(.regular.interactive(), in: .capsule).tint(.primary)
+                    .glassEffect(.clear.interactive(), in: .capsule).tint(.primary)
                 Text("Ta part compte dans tes dépenses. Ce que tu avances et les remboursements sont des virements : ils bougent ton compte sans fausser ton budget.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .safeAreaInset(edge: .bottom) {
                 Button { ajout = true } label: { Label("Ajouter une dépense partagée", systemImage: "plus").font(.headline).frame(maxWidth: .infinity, minHeight: 50).contentShape(.capsule) }
                     .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive().tint(.primary.opacity(0.2)), in: .capsule)
+                    .glassEffect(.clear.interactive().tint(.primary.opacity(0.2)), in: .capsule)
                     .padding(.horizontal, 16).padding(.bottom, 8)
             }
             .navigationTitle(g.groupe.nom)

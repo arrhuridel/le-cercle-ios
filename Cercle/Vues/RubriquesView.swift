@@ -498,7 +498,7 @@ struct RapportVue: View {
                       preview: SharePreview("Rapport \(m.mois.long)")) {
                 Label("Exporter en PDF", systemImage: "doc.richtext").frame(maxWidth: .infinity).padding(.vertical, 14)
             }
-            .glassEffect(.regular.interactive(), in: .capsule).tint(.primary)
+            .glassEffect(.clear.interactive(), in: .capsule).tint(.primary)
         }
     }
 }

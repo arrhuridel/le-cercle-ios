@@ -23,7 +23,7 @@ struct ResteDetailView: View {
                     .font(.footnote.weight(.medium))
                 }
                 .padding(18).frame(maxWidth: .infinity)
-                .glassEffect(.regular, in: .rect(cornerRadius: 26))
+                .glassEffect(.clear, in: .rect(cornerRadius: 26))
 
                 carte("Avant la paie", "déjà sur le compte") { ligne("=", .primary, "Solde la veille de la paie", nil, Fmt.eur(r.avant)) }
                 carte("Reçu ce mois", "salaire + CAF") {
@@ -93,7 +93,7 @@ struct ResteDetailView: View {
                 }
                 Text("Ici le loyer compte en entier, parce que c'est ce qui sort de ton compte, et le remboursement de ton coloc apparaît dans les autres entrées. Dans la règle 50-30-20, seule ta moitié du loyer compte. Objectif d'épargne du mois : \(Fmt.eur(r.objectifEpargne, 0)) (20 % de tous tes revenus).")
                     .font(.footnote).foregroundStyle(.secondary).padding(14)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 22))
+                    .glassEffect(.clear, in: .rect(cornerRadius: 22))
             }
             .padding(.horizontal, 16).padding(.bottom, 24)
         }
@@ -114,7 +114,7 @@ struct ResteDetailView: View {
             c()
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .glassEffect(.clear, in: .rect(cornerRadius: 24))
     }
     private func pastille(_ t: String, _ c: Color) -> some View {
         Text(t).font(.footnote.weight(.bold)).foregroundStyle(c).frame(width: 30, height: 30).background(c.opacity(0.2), in: .rect(cornerRadius: 10))

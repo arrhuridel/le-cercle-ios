@@ -77,10 +77,10 @@ struct SaisieView: View {
                     TextField(type == .virement ? "Note (facultatif)" : "Note : Lidl, cinéma…", text: $note).focused($noteActive)
                         .onChange(of: note) { _, n in deviner(n) }
                         .padding(.horizontal, 14).frame(height: 40)
-                        .glassEffect(.regular, in: .capsule)
+                        .glassEffect(.clear, in: .capsule)
                     DatePicker("Date", selection: $date, in: ...Date(), displayedComponents: .date).labelsHidden().tint(.primary)
                     PhotosPicker(selection: $photo, matching: .images) {
-                        Image(systemName: lecture ? "hourglass" : "text.viewfinder").frame(width: 40, height: 40).glassEffect(.regular.interactive(), in: .circle)
+                        Image(systemName: lecture ? "hourglass" : "text.viewfinder").frame(width: 40, height: 40).glassEffect(.clear.interactive(), in: .circle)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Lire une capture d'écran ou un ticket")
@@ -116,7 +116,7 @@ struct SaisieView: View {
                             VStack(spacing: 5) { Tuile(sc: t.nom, taille: 32); Text(t.court).font(.caption2.weight(.medium)).lineLimit(1) }
                                 .frame(width: 70, height: 70)
                                 .background(sc == t.nom ? Color.primary.opacity(0.16) : Color.clear, in: .rect(cornerRadius: 18))
-                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
+                                .glassEffect(.clear.interactive(), in: .rect(cornerRadius: 18))
                                 .scaleEffect(sc == t.nom ? 1.04 : 1)
                         }
                         .buttonStyle(.plain)
@@ -145,7 +145,7 @@ struct SaisieView: View {
             if edition == nil { Toggle("Répéter chaque mois (le \(J.comp(date).j))", isOn: $repeter) }
         } label: {
             Image(systemName: repeter || devise != "EUR" ? "slider.horizontal.below.square.filled.and.square" : "slider.horizontal.3")
-                .frame(width: 40, height: 40).glassEffect(.regular.interactive(), in: .circle)
+                .frame(width: 40, height: 40).glassEffect(.clear.interactive(), in: .circle)
         }
         .tint(.primary)
         .accessibilityLabel("Options : compte, devise, répétition")
@@ -158,7 +158,7 @@ struct SaisieView: View {
     private var succes: some View {
         VStack(spacing: 12) {
             Image(systemName: "checkmark").font(.system(size: 40, weight: .semibold))
-                .frame(width: 96, height: 96).glassEffect(.regular, in: .circle)
+                .frame(width: 96, height: 96).glassEffect(.clear, in: .circle)
             Text("Enregistré").font(.headline)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -175,7 +175,7 @@ struct SaisieView: View {
                     Button { touche(t) } label: {
                         Group { if t == "⌫" { Image(systemName: "delete.left") } else { Text(t) } }
                             .font(.title2.weight(.medium)).frame(maxWidth: .infinity, minHeight: 50)
-                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18)).contentShape(.rect(cornerRadius: 18))
+                            .glassEffect(.clear.interactive(), in: .rect(cornerRadius: 18)).contentShape(.rect(cornerRadius: 18))
                     }
                     .buttonStyle(.plain)
                 }
@@ -186,7 +186,7 @@ struct SaisieView: View {
             }
             .buttonStyle(.plain)
             .disabled(enCours)
-            .glassEffect(.regular.interactive().tint(.primary.opacity(0.25)), in: .capsule)
+            .glassEffect(.clear.interactive().tint(.primary.opacity(0.25)), in: .capsule)
         }
         .padding(.top, 4).padding(.bottom, 12)
         .sensoryFeedback(.impact(weight: .light), trigger: montant)
