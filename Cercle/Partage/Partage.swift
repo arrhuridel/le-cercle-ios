@@ -4,8 +4,30 @@ import Foundation
 /// L'app les écrit après chaque mise à jour ; les widgets les lisent. Aucun calcul ici, aucune donnée bancaire détaillée :
 /// seulement ce que les widgets affichent.
 enum Partage {
-    /// Espace partagé entre l'app et les widgets (App Group). Il doit figurer dans les droits des deux cibles.
-    static let groupe = "group.fr.lecercle.app"
+    /// Espace partagé entre l'app et les widgets (App Group). Avec un Apple ID gratuit, Sideloadly re-signe l'app et
+    /// peut renommer cet espace : on lit donc son vrai nom dans le profil de signature intégré à l'app (ou au widget),
+    /// et on ne garde le nom d'origine qu'en dernier recours.
+    static let groupe: String = groupeDuProfil() ?? "group.fr.lecercle.app"
+
+    private static func groupeDuProfil() -> String? {
+        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+              let data = try? Data(contentsOf: url), let texte = String(data: data, encoding: .isoLatin1),
+              let cle = texte.range(of: "com.apple.security.application-groups") else { return nil }
+        let suite = texte[cle.upperBound...]
+        guard let fin = suite.range(of: "</array>") else { return nil }
+        let bloc = suite[..<fin.lowerBound]
+        var groupes: [String] = []
+        var reste = bloc[...]
+        while let a = reste.range(of: "<string>"), let b = reste.range(of: "</string>", range: a.upperBound..<reste.endIndex) {
+            groupes.append(String(reste[a.upperBound..<b.lowerBound]).trimmingCharacters(in: .whitespaces))
+            reste = reste[b.upperBound...]
+        }
+        // Le nôtre d'abord (même s'il a reçu un suffixe), sinon le premier vrai groupe
+        return groupes.first { $0.contains("lecercle") } ?? groupes.first { $0.hasPrefix("group.") && !$0.contains("*") }
+    }
+
+    /// Vrai si l'espace partagé existe vraiment sur l'iPhone (sinon les widgets ne peuvent rien lire).
+    static var disponible: Bool { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupe) != nil }
     private static let cle = "widget.donnees"
 
     struct Donnees: Codable, Hashable {

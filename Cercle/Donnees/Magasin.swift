@@ -102,6 +102,7 @@ final class Magasin {
         if client.auth.currentSession != nil {
             lireCopieLocale()
             etat = .connecte
+            publierWidgets()
             await rafraichir()
         } else {
             etat = .deconnecte

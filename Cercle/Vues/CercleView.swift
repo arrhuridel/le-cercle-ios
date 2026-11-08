@@ -186,6 +186,17 @@ struct MonEspaceView: View {
                     Picker("Apparence", selection: $theme) { Text("Sombre").tag("sombre"); Text("Clair").tag("clair"); Text("Auto").tag("auto") }.pickerStyle(.segmented)
                 }
                 .tint(.positif)
+                CarteVerre(espacement: 6) {
+                    HStack {
+                        Text("Widgets")
+                        Spacer()
+                        Text(Partage.disponible ? (Partage.lire().map { "à jour · \($0.misAJour.formatted(date: .omitted, time: .shortened))" } ?? "en attente") : "espace partagé absent")
+                            .foregroundStyle(Partage.disponible ? Color.secondary : Color.alerte)
+                    }
+                    Text(Partage.disponible ? "Les widgets lisent les chiffres que l'app leur transmet à chaque mise à jour." : "La signature de l'app n'a pas gardé l'espace partagé avec les widgets : ils ne peuvent pas lire tes chiffres. Le raccourci « Ajouter une dépense » marche quand même.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("Espace : \(Partage.groupe)").font(.caption2).foregroundStyle(.tertiary).textSelection(.enabled)
+                }
                 CarteVerre(espacement: 12) {
                     NavigationLink("Données : import, capture, règles, sauvegarde") { DonneesView() }
                     NavigationLink("Membres du Cercle") { MembresView() }
