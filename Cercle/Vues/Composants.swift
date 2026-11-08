@@ -8,7 +8,7 @@ struct CarteVerre<Contenu: View>: View {
         VStack(alignment: .leading, spacing: espacement) { contenu }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(.clear, in: .rect(cornerRadius: 24))
+            .verre(.clear, in: .rect(cornerRadius: 24))
     }
 }
 
@@ -85,7 +85,7 @@ struct Kpi: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .glassEffect(.clear, in: .rect(cornerRadius: 22))
+        .verre(.clear, in: .rect(cornerRadius: 22))
     }
 }
 
@@ -172,4 +172,23 @@ struct Ecran<Contenu: View>: View {
         .scrollDismissesKeyboard(.interactively)
         .background(FondView())
     }
+}
+
+
+/// Verre liquide dont l'opacité se règle (Le Cercle › Opacité du verre) : 0 = verre « clear » d'Apple, transparent ;
+/// 100 = presque dépoli (matière floue et voile blanc ajoutés sous le verre).
+struct VerreReglable<S: Shape>: ViewModifier {
+    let glass: Glass
+    let forme: S
+    @AppStorage("opaciteVerre") private var opacite = 15.0
+    func body(content: Content) -> some View {
+        content
+            .background { forme.fill(.ultraThinMaterial).opacity(opacite / 100) }
+            .background { forme.fill(.white.opacity(opacite / 100 * 0.12)) }
+            .glassEffect(glass, in: forme)
+    }
+}
+
+extension View {
+    func verre<S: Shape>(_ glass: Glass, in forme: S) -> some View { modifier(VerreReglable(glass: glass, forme: forme)) }
 }

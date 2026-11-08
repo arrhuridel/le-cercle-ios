@@ -79,7 +79,7 @@ struct ComptesView: View {
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
                         NavigationLink { ActiviteView() } label: { Label("Toutes les opérations", systemImage: "list.bullet").labelStyle(.iconOnly).frame(width: 44, height: 44).contentShape(.rect) }
-                            .buttonStyle(.plain).glassEffect(.clear.interactive(), in: .circle)
+                            .buttonStyle(.plain).verre(.clear.interactive(), in: .circle)
                         Text(Fmt.eur(total, 0)).font(.title2.bold()).monospacedDigit()
                     }
                 }
@@ -120,7 +120,7 @@ struct ComptesView: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .glassEffect(.clear.interactive(), in: .rect(cornerRadius: 24))
+            .verre(.clear.interactive(), in: .rect(cornerRadius: 24))
             .contentShape(.rect(cornerRadius: 24))
         }
         .buttonStyle(.plain)
@@ -206,6 +206,6 @@ struct HistoriqueCompteView: View {
 
     private func bloc(_ t: String, _ v: String, _ c: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) { Text(t).font(.caption).foregroundStyle(.secondary); Text(v).font(.headline).monospacedDigit().foregroundStyle(c) }
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading).glassEffect(.clear, in: .rect(cornerRadius: 18))
+            .padding(12).frame(maxWidth: .infinity, alignment: .leading).verre(.clear, in: .rect(cornerRadius: 18))
     }
 }

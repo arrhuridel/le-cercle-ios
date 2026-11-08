@@ -10,7 +10,7 @@ struct CarteV3<Contenu: View>: View {
         VStack(alignment: .leading, spacing: espacement) { contenu }
             .padding(18)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .glassEffect(.clear.interactive(), in: .rect(cornerRadius: 26))
+            .verre(.clear.interactive(), in: .rect(cornerRadius: 26))
             .contentShape(.rect(cornerRadius: 26))
     }
 }
@@ -98,7 +98,7 @@ struct AccueilView: View {
                     Spacer()
                     Button { masque.toggle() } label: { Image(systemName: masque ? "eye.slash" : "eye").frame(width: 44, height: 44).contentShape(.rect) }
                         .accessibilityLabel(masque ? "Afficher les montants" : "Masquer les montants")
-                        .buttonStyle(.plain).glassEffect(.clear.interactive(), in: .circle)
+                        .buttonStyle(.plain).verre(.clear.interactive(), in: .circle)
                 }
                 if magasin.etat == .demo { Text("Mode démo : données inventées").badge(.alerte) }
                 ForEach(ordre, id: \.self) { k in
@@ -265,7 +265,7 @@ struct RegleBullesView: View {
             GeometryReader { g in
                 let t = g.size.width
                 ZStack {
-                    Color.clear.glassEffect(.clear.tint(f.couleur.opacity(0.12)).interactive(), in: .circle)
+                    Color.clear.verre(.clear.tint(f.couleur.opacity(0.12)).interactive(), in: .circle)
                     // Reflet en haut à gauche et lueur de la famille en bas à droite : l'effet sphère
                     Circle().fill(RadialGradient(colors: [.white.opacity(0.32), .white.opacity(0.06), .clear], center: UnitPoint(x: 0.3, y: 0.22), startRadius: 0, endRadius: t * 0.42))
                     Circle().fill(RadialGradient(colors: [f.couleur.opacity(0.35), .clear], center: UnitPoint(x: 0.72, y: 0.86), startRadius: 0, endRadius: t * 0.5))
@@ -368,7 +368,7 @@ struct AbonnementsView: View {
             }
             .padding(12)
             .frame(maxHeight: .infinity)
-            .glassEffect(.clear, in: .rect(cornerRadius: 26))
+            .verre(.clear, in: .rect(cornerRadius: 26))
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(FondView())

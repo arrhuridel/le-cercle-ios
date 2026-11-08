@@ -107,7 +107,7 @@ struct ActiviteView: View {
 
     private func totaux(_ t: String, _ v: Double) -> some View {
         VStack(alignment: .leading, spacing: 2) { Text(t).font(.caption).foregroundStyle(.secondary); Text(Fmt.eur(v, 0)).font(.headline).monospacedDigit() }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(10).glassEffect(.clear, in: .rect(cornerRadius: 16))
+            .frame(maxWidth: .infinity, alignment: .leading).padding(10).verre(.clear, in: .rect(cornerRadius: 16))
     }
 }
 

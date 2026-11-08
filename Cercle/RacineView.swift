@@ -75,14 +75,14 @@ struct RacineView: View {
     /// Écran de verrouillage : flou, Face ID (ou le code de l'iPhone en secours).
     private var verrou: some View {
         VStack(spacing: 18) {
-            Image(systemName: "faceid").font(.system(size: 44, weight: .light)).frame(width: 86, height: 86).glassEffect(.clear, in: .rect(cornerRadius: 26))
+            Image(systemName: "faceid").font(.system(size: 44, weight: .light)).frame(width: 86, height: 86).verre(.clear, in: .rect(cornerRadius: 26))
             Text("Le Cercle est verrouillé").font(.title2.weight(.semibold))
             if verrouille {
                 Button { deverrouiller() } label: {
                     Text("Déverrouiller").font(.headline).padding(.horizontal, 40).padding(.vertical, 14).contentShape(.capsule)
                 }
                 .buttonStyle(.plain)
-                .glassEffect(.clear.interactive(), in: .capsule)
+                .verre(.clear.interactive(), in: .capsule)
                 .disabled(authEnCours)
             }
         }
@@ -115,14 +115,14 @@ struct ConnexionView: View {
     var body: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "chart.pie").font(.system(size: 44, weight: .light)).frame(width: 92, height: 92).glassEffect(.clear, in: .rect(cornerRadius: 26))
+            Image(systemName: "chart.pie").font(.system(size: 44, weight: .light)).frame(width: 92, height: 92).verre(.clear, in: .rect(cornerRadius: 26))
             Text("Le Cercle").font(.largeTitle.weight(.bold))
             Text("Ton budget, tes analyses et tes comptes partagés.").foregroundStyle(.secondary).multilineTextAlignment(.center)
             VStack(spacing: 10) {
                 TextField("E-mail", text: $email).textContentType(.emailAddress).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .padding(14).glassEffect(.clear, in: .rect(cornerRadius: 16))
+                    .padding(14).verre(.clear, in: .rect(cornerRadius: 16))
                 SecureField("Mot de passe", text: $motDePasse).textContentType(.password)
-                    .padding(14).glassEffect(.clear, in: .rect(cornerRadius: 16))
+                    .padding(14).verre(.clear, in: .rect(cornerRadius: 16))
             }
             .padding(.top, 10)
             if let e = magasin.erreur { Text(e).font(.footnote).foregroundStyle(Color.alerte).multilineTextAlignment(.center) }
@@ -138,7 +138,7 @@ struct ConnexionView: View {
                     .frame(maxWidth: .infinity).padding(.vertical, 14).contentShape(.capsule)   // tout le bouton réagit
             }
             .buttonStyle(.plain)
-            .glassEffect(.clear.interactive(), in: .capsule)
+            .verre(.clear.interactive(), in: .capsule)
             .disabled(email.isEmpty || motDePasse.isEmpty || !magasin.configure || magasin.chargement)
             Spacer()
             Button("Essayer avec des données d'exemple") { magasin.ouvrirDemo() }.font(.subheadline).tint(.secondary)

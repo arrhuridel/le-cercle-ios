@@ -66,7 +66,7 @@ struct AnalysesView: View {
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .glassEffect(.clear, in: .rect(cornerRadius: 26))
+                .verre(.clear, in: .rect(cornerRadius: 26))
                 HStack(spacing: 8) {
                     chiffre("Dépenses/mois", Fmt.eur(b.dep / nbMois, 0), "moyenne \(n) mois")
                     chiffre("Taux d'épargne", b.rev > 0 ? Fmt.pct(b.epa / b.rev * 100) : "—", "repère : 20 %")
@@ -84,7 +84,7 @@ struct AnalysesView: View {
                             Spacer(minLength: 0)
                         }
                         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                        .glassEffect(.clear.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+                        .verre(.clear.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
                     }
                     .buttonStyle(.plain)
                 }
@@ -106,7 +106,7 @@ struct AnalysesView: View {
             Text(s).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.clear, in: .rect(cornerRadius: 18))
+        .verre(.clear, in: .rect(cornerRadius: 18))
     }
 
     private func tuile(_ symbole: String, _ nom: String) -> some View {
@@ -116,7 +116,7 @@ struct AnalysesView: View {
             Text(nom).font(.footnote.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
         }
         .padding(12).frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
-        .glassEffect(.clear.interactive(), in: .rect(cornerRadius: 20)).contentShape(.rect(cornerRadius: 20))
+        .verre(.clear.interactive(), in: .rect(cornerRadius: 20)).contentShape(.rect(cornerRadius: 20))
     }
 }
 
@@ -139,7 +139,7 @@ struct ToutesRubriquesView: View {
                                         .font(.caption.weight(.semibold)).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
                                 }
                                 .padding(8).frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .glassEffect(.clear.interactive(), in: .rect(cornerRadius: 20)).contentShape(.rect(cornerRadius: 20))
+                                .verre(.clear.interactive(), in: .rect(cornerRadius: 20)).contentShape(.rect(cornerRadius: 20))
                             }
                             .buttonStyle(.plain)
                         }

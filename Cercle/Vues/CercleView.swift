@@ -10,6 +10,9 @@ struct CercleView: View {
     @AppStorage("theme") private var theme = "sombre"
     @State private var nouveauGroupe = false
     @State private var choixTheme = false
+    @State private var choixFond = false
+    @AppStorage(StyleFond.cle) private var fondBrut = StyleFond.formes.rawValue
+    @AppStorage("opaciteVerre") private var opacite = 15.0
     @AppStorage(ThemeCouleurs.cle) private var couleurs = ThemeCouleurs.nuit.rawValue
     @AppStorage("couleursAppliquees") private var couleursAppliquees = ThemeCouleurs.nuit.rawValue
     @State private var edite: Champ?
@@ -40,10 +43,10 @@ struct CercleView: View {
                         Text("Aucun groupe pour l'instant").font(.headline)
                         Text("Coloc, voyage, soirée : partage une dépense, Le Cercle calcule qui doit quoi.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         Button { nouveauGroupe = true } label: { Text("Créer un groupe").font(.headline).frame(maxWidth: .infinity, minHeight: 46).contentShape(.capsule) }
-                            .buttonStyle(.plain).glassEffect(.clear.interactive().tint(.primary.opacity(0.2)), in: .capsule)
+                            .buttonStyle(.plain).verre(.clear.interactive().tint(.primary.opacity(0.2)), in: .capsule)
                     }
                     .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .glassEffect(.clear, in: .rect(cornerRadius: 26))
+                    .verre(.clear, in: .rect(cornerRadius: 26))
                 } else {
                     ScrollView {
                         VStack(spacing: 10) {
@@ -52,7 +55,7 @@ struct CercleView: View {
                             }
                             Button { nouveauGroupe = true } label: {
                                 HStack(spacing: 10) { Image(systemName: "plus").frame(width: 30, height: 30).background(.white.opacity(0.1), in: .circle); Text("Nouveau groupe").fontWeight(.semibold); Spacer() }
-                                    .padding(14).glassEffect(.clear.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+                                    .padding(14).verre(.clear.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
                             }
                             .buttonStyle(.plain)
                         }
@@ -68,6 +71,27 @@ struct CercleView: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $nouveauGroupe) { NouveauGroupeView() }
             .sheet(isPresented: $choixTheme, onDismiss: { couleursAppliquees = couleurs }) { ChoixThemeView() }
+            .sheet(isPresented: $choixFond) {
+                NavigationStack {
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            ForEach(StyleFond.allCases) { f in
+                                Button { fondBrut = f.rawValue } label: {
+                                    FondView(style: f, anime: false).frame(height: 96).clipShape(.rect(cornerRadius: 20))
+                                        .overlay(alignment: .bottomLeading) { Text(f.rawValue).font(.footnote.weight(.semibold)).padding(.horizontal, 8).padding(.vertical, 3).background(.black.opacity(0.45), in: .capsule).padding(8) }
+                                        .overlay(RoundedRectangle(cornerRadius: 20).stroke(fondBrut == f.rawValue ? Color.white : .white.opacity(0.2), lineWidth: fondBrut == f.rawValue ? 2 : 0.5))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(16)
+                    }
+                    .background(FondView())
+                    .navigationTitle("Fond").navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { choixFond = false } } }
+                }
+                .presentationDetents([.medium, .large])
+            }
             .alert(edite?.rawValue ?? "", isPresented: Binding(get: { edite != nil }, set: { if !$0 { edite = nil } }), presenting: edite) { c in
                 TextField("Montant en euros", text: $saisie).keyboardType(.decimalPad)
                 Button("Enregistrer") { enregistrer(c) }
@@ -94,7 +118,7 @@ struct CercleView: View {
                 if abs(s) >= 0.005 { Text(s > 0 ? "on te doit" : "tu dois").font(.caption).foregroundStyle(.secondary) }
             }
         }
-        .padding(14).glassEffect(.clear.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+        .padding(14).verre(.clear.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
     }
 
     /// Réglages rapides ; le reste est dans « Tous les réglages ».
@@ -106,6 +130,15 @@ struct CercleView: View {
             Toggle("Masquer les montants", isOn: $masque).padding(.vertical, 9)
             Divider().opacity(0.4)
             ligneBouton("Thème", couleurs) { choixTheme = true }
+            Divider().opacity(0.4)
+            ligneBouton("Fond", fondBrut) { choixFond = true }
+            Divider().opacity(0.4)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack { Text("Opacité du verre"); Spacer(); Text("\(Int(opacite)) %").monospacedDigit().foregroundStyle(.secondary) }
+                Slider(value: $opacite, in: 0...100, step: 1) { Text("Opacité du verre") } minimumValueLabel: { Text("Transparent").font(.caption2) } maximumValueLabel: { Text("Dépoli").font(.caption2) }
+                    .tint(.white)
+            }
+            .padding(.vertical, 8)
             Divider().opacity(0.4)
             HStack {
                 Text("Apparence"); Spacer()
@@ -121,7 +154,7 @@ struct CercleView: View {
         }
         .tint(.positif)
         .padding(.horizontal, 16).padding(.vertical, 2)
-        .glassEffect(.clear, in: .rect(cornerRadius: 24))
+        .verre(.clear, in: .rect(cornerRadius: 24))
     }
 
     private func ligneBouton(_ titre: String, _ valeur: String, action: @escaping () -> Void) -> some View {
@@ -317,14 +350,14 @@ struct GroupeView: View {
                     }
                 }
                 ShareLink(item: bilan(g, soldes)) { Label("Partager le bilan", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity).padding(.vertical, 12) }
-                    .glassEffect(.clear.interactive(), in: .capsule).tint(.primary)
+                    .verre(.clear.interactive(), in: .capsule).tint(.primary)
                 Text("Ta part compte dans tes dépenses. Ce que tu avances et les remboursements sont des virements : ils bougent ton compte sans fausser ton budget.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .safeAreaInset(edge: .bottom) {
                 Button { ajout = true } label: { Label("Ajouter une dépense partagée", systemImage: "plus").font(.headline).frame(maxWidth: .infinity, minHeight: 50).contentShape(.capsule) }
                     .buttonStyle(.plain)
-                    .glassEffect(.clear.interactive().tint(.primary.opacity(0.2)), in: .capsule)
+                    .verre(.clear.interactive().tint(.primary.opacity(0.2)), in: .capsule)
                     .padding(.horizontal, 16).padding(.bottom, 8)
             }
             .navigationTitle(g.groupe.nom)
