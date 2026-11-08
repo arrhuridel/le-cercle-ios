@@ -12,7 +12,7 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.2.0"
+    MARKETING_VERSION: "0.3.0"
     CURRENT_PROJECT_VERSION: "2"
 targets:
   Cercle:
@@ -23,11 +23,8 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
-      - target: CercleWidgets      # les widgets sont rangés dans l'app (dossier PlugIns)
-    entitlements:
-      path: Support/Cercle.entitlements
-      properties:
-        com.apple.security.application-groups: [group.fr.lecercle.app]   # espace partagé avec les widgets
+      # Widgets mis de côté le 08/11 : avec un Apple ID gratuit, Sideloadly ne garde pas l'espace partagé app <-> widgets.
+      # Le code reste dans le dossier Widgets ; pour les remettre : dépendance « - target: CercleWidgets » et la cible.
     info:
       path: Support/Info.plist
       properties:
@@ -53,28 +50,3 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: NO
 
-  # Widgets (écran d'accueil et écran verrouillé). Ils lisent les chiffres déposés par l'app dans l'espace partagé.
-  CercleWidgets:
-    type: app-extension
-    platform: iOS
-    sources:
-      - Widgets
-      - Cercle/Partage
-    entitlements:
-      path: Support/CercleWidgets.entitlements
-      properties:
-        com.apple.security.application-groups: [group.fr.lecercle.app]
-    info:
-      path: Support/Widgets-Info.plist
-      properties:
-        CFBundleDisplayName: Le Cercle
-        CFBundleShortVersionString: $(MARKETING_VERSION)
-        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        NSExtension:
-          NSExtensionPointIdentifier: com.apple.widgetkit-extension
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: fr.lecercle.app.widgets
-        TARGETED_DEVICE_FAMILY: "1"
-        GENERATE_INFOPLIST_FILE: NO
-        SKIP_INSTALL: YES

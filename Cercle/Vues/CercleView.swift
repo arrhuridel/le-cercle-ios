@@ -186,17 +186,6 @@ struct MonEspaceView: View {
                     Picker("Apparence", selection: $theme) { Text("Sombre").tag("sombre"); Text("Clair").tag("clair"); Text("Auto").tag("auto") }.pickerStyle(.segmented)
                 }
                 .tint(.positif)
-                CarteVerre(espacement: 6) {
-                    HStack {
-                        Text("Widgets")
-                        Spacer()
-                        Text(Partage.disponible ? (Partage.lire().map { "à jour · \($0.misAJour.formatted(date: .omitted, time: .shortened))" } ?? "en attente") : "espace partagé absent")
-                            .foregroundStyle(Partage.disponible ? Color.secondary : Color.alerte)
-                    }
-                    Text(Partage.disponible ? "Les widgets lisent les chiffres que l'app leur transmet à chaque mise à jour." : "La signature de l'app n'a pas gardé l'espace partagé avec les widgets : ils ne peuvent pas lire tes chiffres. Le raccourci « Ajouter une dépense » marche quand même.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text("Espace : \(Partage.groupe)").font(.caption2).foregroundStyle(.tertiary).textSelection(.enabled)
-                }
                 CarteVerre(espacement: 12) {
                     NavigationLink("Données : import, capture, règles, sauvegarde") { DonneesView() }
                     NavigationLink("Membres du Cercle") { MembresView() }
@@ -211,6 +200,9 @@ struct MonEspaceView: View {
                 } message: { Text("Tes données restent dans la base. Il faudra ton e-mail et ton mot de passe pour revenir.") }
                 Text(magasin.etat == .demo ? "Mode démo : données inventées, rien n'est enregistré." : "Connecté à la base du site : ce que tu ajoutes ici apparaît aussi sur le site.")
                     .font(.caption).foregroundStyle(.secondary)
+                // Numéro de fabrication GitHub : il change à chaque version, pour vérifier ce qui est installé
+                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?") · fabrication \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")")
+                    .font(.caption).foregroundStyle(.tertiary)
             }
             .navigationTitle("Réglages")
             .refreshable { await magasin.rafraichir() }
