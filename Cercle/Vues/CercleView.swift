@@ -712,7 +712,7 @@ struct DonneesView: View {
     private func memeMarchand(_ o: Operation, _ l: Import.Ligne, _ m: Set<String>) -> Bool {
         let e = Calc.effet(o, compte)
         guard abs(e) > 0.004, (e > 0) == (l.montant > 0), abs(J.ecart(o.date, l.date)) <= 4 else { return false }
-        return !m.isDisjoint(with: Import.mots(o.note + " " + Conseil.marchand(o)))
+        return !m.isDisjoint(with: Import.mots(o.note + " " + Analyse.marchand(o)))
     }
 
     /// Ajoute les lignes cochées. Si la base refuse, rien n'est ajouté, les lignes restent à l'écran et le message le dit.

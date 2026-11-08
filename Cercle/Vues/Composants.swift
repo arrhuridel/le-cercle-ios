@@ -147,7 +147,7 @@ extension Text {
 /// Grand chiffre (montant principal d'un écran) : sa taille suit le réglage « Taille du texte » de l'iPhone
 /// (@ScaledMetric, comme le recommande Apple) et rétrécit plutôt que de déborder.
 struct GrandChiffre: ViewModifier {
-    @ScaledMetric(relativeTo: .largeTitle) private var taille: CGFloat
+    @ScaledMetric(relativeTo: .largeTitle) private var taille: CGFloat = 40
     let poids: Font.Weight
     let design: Font.Design
     init(_ taille: CGFloat, poids: Font.Weight, design: Font.Design) { _taille = ScaledMetric(wrappedValue: taille, relativeTo: .largeTitle); self.poids = poids; self.design = design }
