@@ -9,6 +9,9 @@ struct CercleView: View {
     @AppStorage("masque") private var masque = false
     @AppStorage("theme") private var theme = "sombre"
     @State private var nouveauGroupe = false
+    @State private var choixTheme = false
+    @AppStorage(ThemeCouleurs.cle) private var couleurs = ThemeCouleurs.nuit.rawValue
+    @AppStorage("couleursAppliquees") private var couleursAppliquees = ThemeCouleurs.nuit.rawValue
     @State private var edite: Champ?
     @State private var saisie = ""
     enum Champ: String, Identifiable { case budget = "Budget mensuel", objectif = "Objectif d'épargne mensuel"; var id: String { rawValue } }
@@ -64,6 +67,7 @@ struct CercleView: View {
             .background(FondView())
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $nouveauGroupe) { NouveauGroupeView() }
+            .sheet(isPresented: $choixTheme, onDismiss: { couleursAppliquees = couleurs }) { ChoixThemeView() }
             .alert(edite?.rawValue ?? "", isPresented: Binding(get: { edite != nil }, set: { if !$0 { edite = nil } }), presenting: edite) { c in
                 TextField("Montant en euros", text: $saisie).keyboardType(.decimalPad)
                 Button("Enregistrer") { enregistrer(c) }
@@ -96,13 +100,12 @@ struct CercleView: View {
     /// Réglages rapides ; le reste est dans « Tous les réglages ».
     private var espace: some View {
         VStack(spacing: 0) {
-            ligneBouton("Budget mensuel", (magasin.profil?.budget ?? 0) > 0 ? Fmt.eur(magasin.profil?.budget ?? 0, 0) : "à définir") { saisie = ""; edite = .budget }
-            Divider().opacity(0.4)
-            ligneBouton("Objectif d'épargne", (magasin.profil?.objectifEpargne ?? 0) > 0 ? "\(Fmt.eur(magasin.profil?.objectifEpargne ?? 0, 0)) / mois" : "à définir") { saisie = ""; edite = .objectif }
-            Divider().opacity(0.4)
+            // Budget et objectif d'épargne ne se saisissent plus : le total du mois = salaire + CAF, l'épargne = 20 % des revenus (08/11)
             Toggle("Verrouiller avec Face ID", isOn: $faceId).padding(.vertical, 9)
             Divider().opacity(0.4)
             Toggle("Masquer les montants", isOn: $masque).padding(.vertical, 9)
+            Divider().opacity(0.4)
+            ligneBouton("Thème", couleurs) { choixTheme = true }
             Divider().opacity(0.4)
             HStack {
                 Text("Apparence"); Spacer()
@@ -170,8 +173,8 @@ struct MonEspaceView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 CarteVerre(espacement: 12) {
-                    champ("Budget mensuel", $budget, valeur: magasin.profil?.budget) { await magasin.majProfil(budget: $0) }
-                    champ("Objectif d'épargne mensuel", $objectif, valeur: magasin.profil?.objectifEpargne) { await magasin.majProfil(objectifEpargne: $0) }
+                    Text("Le total du mois est ce que tu reçois en salaire et CAF ; l'objectif d'épargne est 20 % de tous tes revenus. Rien à régler.")
+                        .font(.footnote).foregroundStyle(.secondary)
                     NavigationLink("Enveloppes par catégorie") { EnveloppesView() }
                 }
                 .tint(.primary)

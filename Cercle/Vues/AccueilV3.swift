@@ -34,9 +34,10 @@ struct Anneau: View {
 }
 
 extension Color {
-    static let besoins = Color(red: 0.56, green: 0.65, blue: 0.78)
-    static let envies = Color(red: 0.82, green: 0.66, blue: 0.47)
-    static let epargneV3 = Color(red: 0.44, green: 0.81, blue: 0.62)
+    // Couleurs des familles du thème choisi (Le Cercle › Thème)
+    static var besoins: Color { ThemeCouleurs.actuel.besoins }
+    static var envies: Color { ThemeCouleurs.actuel.envies }
+    static var epargneV3: Color { ThemeCouleurs.actuel.epargne }
 }
 
 /// Les chiffres du Résumé v3, calculés une fois à partir du tableau.
@@ -60,7 +61,8 @@ struct ResumeV3 {
         return [(Cat.besoins, "bes", "Besoins", 50.0, t.b.bes), (.envies, "env", "Envies", 30, t.b.env), (.epargne, "epa", "Épargne", 20, t.b.epa)].map { cat, k, nom, cible, dep in
             let parSc = Dictionary(grouping: comp.filter { $0.cat == cat }, by: \.sc).mapValues { $0.reduce(0) { $0 + $1.montant } }
             let cats = parSc.filter { abs($0.value) >= 0.5 }.sorted { $0.value > $1.value }.prefix(6).map { Famille.Ligne(nom: $0.key, montant: $0.value) }
-            return Famille(id: k, nom: nom, cible: cible, dep: dep, total: ref * cible / 100, cats: Array(cats))
+            let total = cat == .epargne ? t.b.rev * 0.20 : ref * cible / 100
+            return Famille(id: k, nom: nom, cible: cible, dep: dep, total: total, cats: Array(cats))
         }
     }
 }
@@ -73,7 +75,7 @@ struct AccueilView: View {
     @AppStorage("masque") private var masque = false
     @AppStorage("ordreAccueil") private var ordreBrut = "reste,regle,abos"
     @State private var page: Page?
-    enum Page: Hashable { case regle, abos }
+    enum Page: Hashable { case regle, abos, reste }
 
     private var ordre: [String] {
         let l = ordreBrut.split(separator: ",").map(String.init).filter { ["reste", "regle", "abos"].contains($0) }
@@ -109,7 +111,11 @@ struct AccueilView: View {
             .background(FondView())
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(item: $page) { p in
-                if p == .regle { RegleBullesView() } else { AbonnementsView() }
+                switch p {
+                case .regle: RegleBullesView()
+                case .abos: AbonnementsView()
+                case .reste: ResteDetailView()
+                }
             }
             .refreshable { await magasin.rafraichir() }
         }
@@ -125,21 +131,26 @@ struct AccueilView: View {
     @ViewBuilder private func carte(_ k: String, _ t: Tableau, _ r: ResumeV3) -> some View {
         switch k {
         case "reste":
-            CarteV3(espacement: 10) {
-                Text("Il te reste jusqu'au \(J.court(t.per.finBudget))").font(.subheadline).foregroundStyle(.secondary)
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(Fmt.eur(r.reste, 0)).grandChiffre(54)
-                        .foregroundStyle(r.reste < 0 ? Color.negatif : .primary).lineLimit(1).minimumScaleFactor(0.6)
-                    Text("sur \(Fmt.eur(r.budget, 0))").foregroundStyle(.secondary)
+            let rr = magasin.resteReel
+            Button { page = .reste } label: {
+                CarteV3(espacement: 10) {
+                    Text("Il te reste jusqu'au \(J.court(rr.fin)) ›").font(.subheadline).foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        ChiffreAnime(valeur: rr.solde, taille: 54)
+                            .foregroundStyle(rr.solde < 0 ? Color.negatif : .primary)
+                        Text("sur ton compte").foregroundStyle(.secondary)
+                    }
+                    Jauge(part: rr.part, couleur: .primary, repere: r.repere, hauteur: 10)
+                    HStack {
+                        Text("\(Fmt.eur(rr.parJour, 0)) par jour · \(rr.restants) jours")
+                        Spacer()
+                        Text("Fin du mois : ≈ \(Fmt.eur(rr.finMois, 0))").foregroundStyle(rr.finMois < 0 ? Color.alerte : .secondary)
+                    }
+                    .font(.footnote.weight(.medium))
                 }
-                Jauge(part: r.part, couleur: r.part > 100 ? .negatif : .primary, repere: r.repere, hauteur: 10)
-                HStack {
-                    Text(r.reste >= 0 ? "\(Fmt.eur(r.parJour, 0)) par jour · \(t.prev.restants) jours" : "Budget dépassé · \(t.prev.restants) jours")
-                    Spacer()
-                    Text("Prévu : \(Fmt.eur(t.prev.depFin, 0))").foregroundStyle(t.prev.depFin > r.budget ? Color.alerte : .secondary)
-                }
-                .font(.footnote.weight(.medium))
             }
+            .buttonStyle(.plain)
+            .accessibilityHint("Ouvre le détail de ton solde")
         case "regle":
             Button { page = .regle } label: {
                 CarteV3 {
@@ -202,12 +213,16 @@ struct RegleBullesView: View {
                 ZStack {
                     ForEach(Array(f.enumerated()), id: \.element.id) { i, fa in
                         if i < p.count {
-                            bulle(fa).frame(width: p[i].taille, height: p[i].taille).position(p[i].centre)
+                            bulle(fa, rang: i).frame(width: p[i].taille, height: p[i].taille).position(p[i].centre)
+                                .scaleEffect(choisie == nil ? 1 : choisie?.id == fa.id ? 1.07 : 0.92)
+                                .opacity(choisie == nil || choisie?.id == fa.id ? 1 : 0.45)
+                                .blur(radius: choisie == nil || choisie?.id == fa.id ? 0 : 1.5)
+                                .animation(.smooth(duration: 0.3), value: choisie)
                         }
                     }
                 }
             }
-            Text("Calculé sur \(Fmt.eur(t.b.ref, 0)) de revenus · touche une bulle pour le détail").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+            Text("Besoins, envies : \(Fmt.eur(t.b.ref, 0)) · Épargne : 20 % de \(Fmt.eur(t.b.rev, 0))").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(FondView())
@@ -215,7 +230,7 @@ struct RegleBullesView: View {
         .sheet(item: $choisie) { fa in
             NavigationStack {
                 List {
-                    Section { Text("\(Fmt.eur(fa.dep, 0)) dépensés sur \(Fmt.eur(fa.total, 0)) (\(Int(fa.cible)) % de \(Fmt.eur(t.b.ref, 0)))").foregroundStyle(.secondary) }
+                    Section { Text("\(Fmt.eur(fa.dep, 0)) sur \(Fmt.eur(fa.total, 0)) (\(Int(fa.cible)) % de \(Fmt.eur(fa.id == "epa" ? t.b.rev : t.b.ref, 0)))").foregroundStyle(.secondary) }
                     ForEach(fa.cats, id: \.nom) { c in HStack { Text(c.nom); Spacer(); Text(Fmt.eur(c.montant, 0)).monospacedDigit().foregroundStyle(.secondary) } }
                 }
                 .navigationTitle(fa.nom)
@@ -242,7 +257,7 @@ struct RegleBullesView: View {
         return []
     }
 
-    private func bulle(_ f: ResumeV3.Famille) -> some View {
+    private func bulle(_ f: ResumeV3.Famille, rang: Int) -> some View {
         let ecart = f.dep - f.total
         let etat: (String, Color) = f.id == "epa" ? (ecart >= 0 ? ("Objectif atteint", .positif) : ("\(Fmt.eur(-ecart, 0)) à mettre", .alerte))
             : (ecart > 0 ? ("\(Fmt.eur(ecart, 0)) de trop", .alerte) : ("\(Fmt.eur(-ecart, 0)) de marge", .positif))
@@ -250,7 +265,11 @@ struct RegleBullesView: View {
             GeometryReader { g in
                 let t = g.size.width
                 ZStack {
-                    Color.clear.glassEffect(.regular.interactive(), in: .circle)
+                    Color.clear.glassEffect(.regular.tint(f.couleur.opacity(0.12)).interactive(), in: .circle)
+                    // Reflet en haut à gauche et lueur de la famille en bas à droite : l'effet sphère
+                    Circle().fill(RadialGradient(colors: [.white.opacity(0.32), .white.opacity(0.06), .clear], center: UnitPoint(x: 0.3, y: 0.22), startRadius: 0, endRadius: t * 0.42))
+                    Circle().fill(RadialGradient(colors: [f.couleur.opacity(0.35), .clear], center: UnitPoint(x: 0.72, y: 0.86), startRadius: 0, endRadius: t * 0.5))
+                    Circle().strokeBorder(LinearGradient(colors: [.white.opacity(0.8), .white.opacity(0.08), f.couleur.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
                     Anneau(part: f.total > 0 ? f.dep / f.total : 0, couleur: f.couleur, epaisseur: 4)
                     VStack(spacing: 3) {
                         HStack(spacing: 5) { Circle().fill(f.couleur).frame(width: 8, height: 8); Text("\(f.nom) · \(Int(f.cible)) %") }
@@ -265,6 +284,43 @@ struct RegleBullesView: View {
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
+        .shadow(color: f.couleur.opacity(0.25), radius: 22)
+        .modifier(Flotte(rang: rang))
+        .accessibilityLabel("\(f.nom) : \(Fmt.eur(f.dep, 0)) sur \(Fmt.eur(f.total, 0))")
+    }
+}
+
+/// Les bulles flottent doucement, chacune à son rythme (rien si « Réduire les animations »).
+private struct Flotte: ViewModifier {
+    let rang: Int
+    @State private var haut = false
+    @State private var vu = false
+    @Environment(\.accessibilityReduceMotion) private var reduire
+    func body(content: Content) -> some View {
+        content
+            .offset(y: reduire ? 0 : (haut ? -3 : 3))
+            .scaleEffect(vu ? 1 : 0.9).opacity(vu ? 1 : 0)
+            .onAppear {
+                withAnimation(reduire ? nil : .smooth(duration: 0.45).delay(Double(rang) * 0.05)) { vu = true }
+                guard !reduire else { return }
+                withAnimation(.easeInOut(duration: 6 + Double(rang)).repeatForever(autoreverses: true)) { haut = true }
+            }
+    }
+}
+
+/// Grand chiffre qui défile de 0 jusqu'à sa valeur à l'ouverture (500 ms ; directement la valeur si « Réduire les animations »).
+struct ChiffreAnime: View {
+    let valeur: Double
+    var taille: CGFloat = 54
+    var decimales = 0
+    @State private var affiche: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduire
+    var body: some View {
+        Text(Fmt.eur(affiche, decimales)).grandChiffre(taille)
+            .contentTransition(.numericText(value: affiche))
+            .onAppear { if reduire { affiche = valeur } else { withAnimation(.smooth(duration: 0.5)) { affiche = valeur } } }
+            .onChange(of: valeur) { _, v in withAnimation(reduire ? nil : .smooth(duration: 0.3)) { affiche = v } }
+            .accessibilityLabel(Fmt.eur(valeur, decimales))
     }
 }
 

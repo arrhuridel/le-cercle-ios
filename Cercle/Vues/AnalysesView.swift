@@ -23,7 +23,9 @@ struct AnalysesView: View {
     @Environment(Magasin.self) private var magasin
     @State private var n = 6
     @State private var moisChoisi: String?
-    @State private var moisGarde: String?   // dernier mois touché : le détail reste affiché après avoir levé le doigt
+    @State private var moisGarde: String?
+    @State private var pousse = false   // les barres poussent à l'ouverture
+    @Environment(\.accessibilityReduceMotion) private var reduire   // dernier mois touché : le détail reste affiché après avoir levé le doigt
 
     private let tuiles: [Rubrique] = [.depenses, .marchands, .habitudes, .revenus, .comparer]
 
@@ -48,14 +50,16 @@ struct AnalysesView: View {
                         Text(sel.map { "\($0.mois.long.capitalizedPremiere) : \(Fmt.eur($0.b.dep, 0))" } ?? "touche un mois").font(.footnote).foregroundStyle(.secondary) }
                     Chart {
                         ForEach(donnees, id: \.mois.cle) { m in
-                            BarMark(x: .value("Mois", m.mois.libelle), y: .value("Montant", m.b.rev)).foregroundStyle(by: .value("Série", "Revenus")).position(by: .value("Série", "Revenus")).cornerRadius(4)
+                            BarMark(x: .value("Mois", m.mois.libelle), y: .value("Montant", m.b.rev * (pousse ? 1 : 0))).foregroundStyle(by: .value("Série", "Revenus")).position(by: .value("Série", "Revenus")).cornerRadius(4)
                                 .opacity(sel == nil || sel?.mois.cle == m.mois.cle ? 1 : 0.3)
-                            BarMark(x: .value("Mois", m.mois.libelle), y: .value("Montant", m.b.dep)).foregroundStyle(by: .value("Série", "Dépenses")).position(by: .value("Série", "Dépenses")).cornerRadius(4)
+                            BarMark(x: .value("Mois", m.mois.libelle), y: .value("Montant", m.b.dep * (pousse ? 1 : 0))).foregroundStyle(by: .value("Série", "Dépenses")).position(by: .value("Série", "Dépenses")).cornerRadius(4)
                                 .opacity(sel == nil || sel?.mois.cle == m.mois.cle ? 1 : 0.3)
                         }
                     }
                     .chartForegroundStyleScale(["Revenus": Color.white.opacity(0.3), "Dépenses": Color.white])
                     .chartXSelection(value: $moisChoisi)
+                    .chartYScale(domain: 0...max(donnees.map { max($0.b.rev, $0.b.dep) }.max() ?? 1, 1))
+                    .onAppear { withAnimation(reduire ? nil : .smooth(duration: 0.5)) { pousse = true } }
                     .onChange(of: moisChoisi) { _, v in if let v { moisGarde = v } }
                     .sensoryFeedback(.selection, trigger: moisGarde)
                     .frame(maxHeight: .infinity)
