@@ -14,7 +14,6 @@ struct RacineView: View {
     @AppStorage("theme") private var theme = "sombre"
     @State private var onglet: Onglet = .resume
     @State private var saisieOuverte = false
-    @AppStorage("couleursAppliquees") private var couleursAppliquees = ThemeCouleurs.nuit.rawValue
     @State private var verrouille = false
     @State private var authEnCours = false     // une seule demande Face ID à la fois
     @State private var revenuDuFond = false    // on ne redemande Face ID tout seul qu'en revenant de l'arrière-plan
@@ -69,7 +68,6 @@ struct RacineView: View {
         .sensoryFeedback(.selection, trigger: onglet)
         .sheet(isPresented: $saisieOuverte) { SaisieView() }
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-        .id(couleursAppliquees)   // texte réglable jusqu'à XXL (revue de design du 08/11)
     }
 
     /// Écran de verrouillage : flou, Face ID (ou le code de l'iPhone en secours).

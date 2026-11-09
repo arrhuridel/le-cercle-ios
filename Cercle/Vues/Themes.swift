@@ -30,54 +30,6 @@ enum ThemeCouleurs: String, CaseIterable, Identifiable {
     var epargne: Color { Self.h(valeurs.familles[2]) }
 
     static let cle = "couleurs"
-    static var actuel: ThemeCouleurs { ThemeCouleurs(rawValue: UserDefaults.standard.string(forKey: cle) ?? "") ?? .nuit }
+    static var actuel: ThemeCouleurs { .nuit }   // identité unique (09/11) : plus de choix de couleurs
 }
 
-/// Choix du thème : on touche, l'app change tout de suite derrière la feuille.
-struct ChoixThemeView: View {
-    @AppStorage(ThemeCouleurs.cle) private var couleurs = ThemeCouleurs.nuit.rawValue
-    @Environment(\.dismiss) private var fermer
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    ForEach(ThemeCouleurs.allCases) { t in
-                        Button { couleurs = t.rawValue } label: { tuile(t) }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Thème \(t.rawValue)")
-                            .accessibilityAddTraits(couleurs == t.rawValue ? .isSelected : [])
-                    }
-                }
-                .padding(16)
-            }
-            .background(FondView())
-            .navigationTitle("Thème")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { fermer() } } }
-            .sensoryFeedback(.selection, trigger: couleurs)
-        }
-        .presentationDetents([.medium, .large])
-    }
-
-    private func tuile(_ t: ThemeCouleurs) -> some View {
-        let tc = t.taches
-        return VStack(alignment: .leading) {
-            Text(t.rawValue).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-            Spacer()
-            HStack(spacing: 5) { ForEach([t.besoins, t.envies, t.epargne], id: \.self) { c in Circle().fill(c).frame(width: 12, height: 12) } }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
-        .background {
-            ZStack {
-                t.fond
-                RadialGradient(colors: [tc[0], .clear], center: .topLeading, startRadius: 0, endRadius: 120)
-                RadialGradient(colors: [tc[1], .clear], center: .trailing, startRadius: 0, endRadius: 110)
-                RadialGradient(colors: [tc[2], .clear], center: .bottom, startRadius: 0, endRadius: 100)
-            }
-            .clipShape(.rect(cornerRadius: 20))
-        }
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(couleurs == t.rawValue ? Color.white : .white.opacity(0.18), lineWidth: couleurs == t.rawValue ? 2 : 0.5))
-    }
-}

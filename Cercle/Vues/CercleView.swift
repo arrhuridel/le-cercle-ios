@@ -9,12 +9,7 @@ struct CercleView: View {
     @AppStorage("masque") private var masque = false
     @AppStorage("theme") private var theme = "sombre"
     @State private var nouveauGroupe = false
-    @State private var choixTheme = false
-    @State private var choixFond = false
-    @AppStorage(StyleFond.cle) private var fondBrut = StyleFond.formes.rawValue
-    @AppStorage("opaciteVerre") private var opacite = 15.0
     @AppStorage(ThemeCouleurs.cle) private var couleurs = ThemeCouleurs.nuit.rawValue
-    @AppStorage("couleursAppliquees") private var couleursAppliquees = ThemeCouleurs.nuit.rawValue
     @State private var edite: Champ?
     @State private var saisie = ""
     enum Champ: String, Identifiable { case budget = "Budget mensuel", objectif = "Objectif d'épargne mensuel"; var id: String { rawValue } }
@@ -70,28 +65,6 @@ struct CercleView: View {
             .background(FondView())
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $nouveauGroupe) { NouveauGroupeView() }
-            .sheet(isPresented: $choixTheme, onDismiss: { couleursAppliquees = couleurs }) { ChoixThemeView() }
-            .sheet(isPresented: $choixFond) {
-                NavigationStack {
-                    ScrollView {
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                            ForEach(StyleFond.allCases) { f in
-                                Button { fondBrut = f.rawValue } label: {
-                                    FondView(style: f, anime: false).frame(height: 96).clipShape(.rect(cornerRadius: 20))
-                                        .overlay(alignment: .bottomLeading) { Text(f.rawValue).font(.footnote.weight(.semibold)).padding(.horizontal, 8).padding(.vertical, 3).background(.black.opacity(0.45), in: .capsule).padding(8) }
-                                        .overlay(RoundedRectangle(cornerRadius: 20).stroke(fondBrut == f.rawValue ? Color.white : .white.opacity(0.2), lineWidth: fondBrut == f.rawValue ? 2 : 0.5))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(16)
-                    }
-                    .background(FondView())
-                    .navigationTitle("Fond").navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { choixFond = false } } }
-                }
-                .presentationDetents([.medium, .large])
-            }
             .alert(edite?.rawValue ?? "", isPresented: Binding(get: { edite != nil }, set: { if !$0 { edite = nil } }), presenting: edite) { c in
                 TextField("Montant en euros", text: $saisie).keyboardType(.decimalPad)
                 Button("Enregistrer") { enregistrer(c) }
@@ -128,17 +101,6 @@ struct CercleView: View {
             Toggle("Verrouiller avec Face ID", isOn: $faceId).padding(.vertical, 9)
             Divider().opacity(0.4)
             Toggle("Masquer les montants", isOn: $masque).padding(.vertical, 9)
-            Divider().opacity(0.4)
-            ligneBouton("Thème", couleurs) { choixTheme = true }
-            Divider().opacity(0.4)
-            ligneBouton("Fond", fondBrut) { choixFond = true }
-            Divider().opacity(0.4)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack { Text("Opacité du verre"); Spacer(); Text("\(Int(opacite)) %").monospacedDigit().foregroundStyle(.secondary) }
-                Slider(value: $opacite, in: 0...100, step: 1) { Text("Opacité du verre") } minimumValueLabel: { Text("Transparent").font(.caption2) } maximumValueLabel: { Text("Dépoli").font(.caption2) }
-                    .tint(.white)
-            }
-            .padding(.vertical, 8)
             Divider().opacity(0.4)
             HStack {
                 Text("Apparence"); Spacer()

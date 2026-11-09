@@ -180,12 +180,8 @@ struct Ecran<Contenu: View>: View {
 struct VerreReglable<S: Shape>: ViewModifier {
     let glass: Glass
     let forme: S
-    @AppStorage("opaciteVerre") private var opacite = 15.0
     func body(content: Content) -> some View {
-        content
-            .background { forme.fill(.ultraThinMaterial).opacity(opacite / 100) }
-            .background { forme.fill(.white.opacity(opacite / 100 * 0.12)) }
-            .glassEffect(glass, in: forme)
+        content.glassEffect(glass, in: forme)
     }
 }
 
@@ -193,12 +189,10 @@ struct VerreReglable<S: Shape>: ViewModifier {
 /// Apple réserve le verre liquide aux commandes (onglets, boutons, sélecteurs) ; le contenu se pose sur une surface.
 struct Surface<S: Shape>: ViewModifier {
     let forme: S
-    @AppStorage(ThemeCouleurs.cle) private var couleurs = ThemeCouleurs.nuit.rawValue
+    static let carte = Color(red: 0x1F / 255, green: 0x25 / 255, blue: 0x2B / 255)   // cartes du site
     func body(content: Content) -> some View {
-        let fond = (ThemeCouleurs(rawValue: couleurs) ?? .nuit).fond
         content
-            .background { forme.fill(fond.opacity(0.84)) }
-            .background { forme.fill(.ultraThinMaterial) }
+            .background { forme.fill(Self.carte.opacity(0.94)) }
             .overlay { forme.stroke(LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.05)], startPoint: .top, endPoint: .bottom), lineWidth: 0.6) }
             .contentShape(forme)
     }
