@@ -185,14 +185,16 @@ struct VerreReglable<S: Shape>: ViewModifier {
     }
 }
 
+/// Couleur des cartes du site (#1F252B).
+let couleurCarte = Color(red: 0x1F / 255, green: 0x25 / 255, blue: 0x2B / 255)
+
 /// Surface des cartes de contenu (revue du 09/11) : sombre et presque opaque, lisible sur n'importe quel fond.
 /// Apple réserve le verre liquide aux commandes (onglets, boutons, sélecteurs) ; le contenu se pose sur une surface.
 struct Surface<S: Shape>: ViewModifier {
     let forme: S
-    static let carte = Color(red: 0x1F / 255, green: 0x25 / 255, blue: 0x2B / 255)   // cartes du site
     func body(content: Content) -> some View {
         content
-            .background { forme.fill(Self.carte.opacity(0.94)) }
+            .background { forme.fill(couleurCarte.opacity(0.94)) }
             .overlay { forme.stroke(LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.05)], startPoint: .top, endPoint: .bottom), lineWidth: 0.6) }
             .contentShape(forme)
     }
