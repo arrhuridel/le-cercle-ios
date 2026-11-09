@@ -8,7 +8,7 @@ struct CarteVerre<Contenu: View>: View {
         VStack(alignment: .leading, spacing: espacement) { contenu }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .verre(.clear, in: .rect(cornerRadius: 24))
+            .surface(in: .rect(cornerRadius: 24))
     }
 }
 
@@ -85,7 +85,7 @@ struct Kpi: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .verre(.clear, in: .rect(cornerRadius: 22))
+        .surface(in: .rect(cornerRadius: 22))
     }
 }
 
@@ -189,6 +189,22 @@ struct VerreReglable<S: Shape>: ViewModifier {
     }
 }
 
+/// Surface des cartes de contenu (revue du 09/11) : sombre et presque opaque, lisible sur n'importe quel fond.
+/// Apple réserve le verre liquide aux commandes (onglets, boutons, sélecteurs) ; le contenu se pose sur une surface.
+struct Surface<S: Shape>: ViewModifier {
+    let forme: S
+    @AppStorage(ThemeCouleurs.cle) private var couleurs = ThemeCouleurs.nuit.rawValue
+    func body(content: Content) -> some View {
+        let fond = (ThemeCouleurs(rawValue: couleurs) ?? .nuit).fond
+        content
+            .background { forme.fill(fond.opacity(0.84)) }
+            .background { forme.fill(.ultraThinMaterial) }
+            .overlay { forme.stroke(LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.05)], startPoint: .top, endPoint: .bottom), lineWidth: 0.6) }
+            .contentShape(forme)
+    }
+}
+
 extension View {
+    func surface<S: Shape>(in forme: S) -> some View { modifier(Surface(forme: forme)) }
     func verre<S: Shape>(_ glass: Glass, in forme: S) -> some View { modifier(VerreReglable(glass: glass, forme: forme)) }
 }

@@ -10,7 +10,7 @@ struct CarteV3<Contenu: View>: View {
         VStack(alignment: .leading, spacing: espacement) { contenu }
             .padding(18)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .verre(.clear.interactive(), in: .rect(cornerRadius: 26))
+            .surface(in: .rect(cornerRadius: 26))
             .contentShape(.rect(cornerRadius: 26))
     }
 }
@@ -136,15 +136,16 @@ struct AccueilView: View {
                 CarteV3(espacement: 10) {
                     Text("Il te reste jusqu'au \(J.court(rr.fin)) ›").font(.subheadline).foregroundStyle(.secondary)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        ChiffreAnime(valeur: rr.solde, taille: 54)
+                        ChiffreAnime(valeur: rr.solde, taille: 48, decimales: 2)
                             .foregroundStyle(rr.solde < 0 ? Color.negatif : .primary)
                         Text("sur ton compte").foregroundStyle(.secondary)
                     }
                     Jauge(part: rr.part, couleur: .primary, repere: r.repere, hauteur: 10)
                     HStack {
-                        Text("\(Fmt.eur(rr.parJour, 0)) par jour · \(rr.restants) jours")
+                        Text(rr.finMois < 0 ? "À ce rythme : ≈ \(Fmt.eur(rr.finMois, 0)) le \(J.court(rr.fin))" : "À ce rythme : ≈ \(Fmt.eur(rr.finMois, 0)) de côté le \(J.court(rr.fin))")
+                            .foregroundStyle(rr.finMois < 0 ? Color.alerte : .primary)
                         Spacer()
-                        Text("Fin du mois : ≈ \(Fmt.eur(rr.finMois, 0))").foregroundStyle(rr.finMois < 0 ? Color.alerte : .secondary)
+                        Text(rr.parJour > 0 ? "max \(Fmt.eur(rr.parJour, 0)) / jour" : "0 € / jour").foregroundStyle(.secondary)
                     }
                     .font(.footnote.weight(.medium))
                 }
@@ -160,7 +161,7 @@ struct AccueilView: View {
                             VStack(spacing: 6) {
                                 ZStack {
                                     Anneau(part: f.total > 0 ? f.dep / f.total : 0, couleur: f.couleur)
-                                    Text(Fmt.pct(t.b.ref > 0 ? f.dep / t.b.ref * 100 : 0)).font(.subheadline.bold()).monospacedDigit()
+                                    Text(Fmt.pct(f.total > 0 ? f.dep / f.total * 100 : 0)).font(.subheadline.bold()).monospacedDigit()
                                 }
                                 .frame(width: 72, height: 72)
                                 Text(f.nom).font(.caption).foregroundStyle(.secondary)
@@ -277,8 +278,9 @@ struct RegleBullesView: View {
                         Text(Fmt.eur(f.dep, 0)).font(.system(size: t * 0.16, weight: .bold, design: .rounded)).monospacedDigit()
                         Text("sur \(Fmt.eur(f.total, 0))").font(.footnote).foregroundStyle(.secondary)
                         Text(etat.0).font(.caption.weight(.semibold)).foregroundStyle(etat.1)
-                            .padding(.horizontal, 10).padding(.vertical, 3).background(.white.opacity(0.08), in: Capsule())
+                            .padding(.horizontal, 10).padding(.vertical, 3).background(.black.opacity(0.45), in: Capsule())
                     }
+                    .shadow(color: .black.opacity(0.55), radius: 6)
                 }
             }
         }
@@ -368,7 +370,7 @@ struct AbonnementsView: View {
             }
             .padding(12)
             .frame(maxHeight: .infinity)
-            .verre(.clear, in: .rect(cornerRadius: 26))
+            .surface(in: .rect(cornerRadius: 26))
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(FondView())

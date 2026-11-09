@@ -27,7 +27,7 @@ struct AnalysesView: View {
     @State private var pousse = false   // les barres poussent à l'ouverture
     @Environment(\.accessibilityReduceMotion) private var reduire   // dernier mois touché : le détail reste affiché après avoir levé le doigt
 
-    private let tuiles: [Rubrique] = [.depenses, .marchands, .habitudes, .revenus, .comparer]
+    private let tuiles: [Rubrique] = [.depenses, .revenus]
 
     var body: some View {
         let ops = magasin.toutes, t = magasin.tableau()
@@ -66,10 +66,10 @@ struct AnalysesView: View {
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .verre(.clear, in: .rect(cornerRadius: 26))
+                .surface(in: .rect(cornerRadius: 26))
                 HStack(spacing: 8) {
-                    chiffre("Dépenses/mois", Fmt.eur(b.dep / nbMois, 0), "moyenne \(n) mois")
-                    chiffre("Taux d'épargne", b.rev > 0 ? Fmt.pct(b.epa / b.rev * 100) : "—", "repère : 20 %")
+                    chiffre("Dépenses/mois", Fmt.eur(b.dep / nbMois, 0), "sur \(n) mois")
+                    chiffre("Épargne", b.rev > 0 ? Fmt.pct(b.epa / b.rev * 100) : "—", "repère : 20 %")
                     chiffre("Santé", "\(sante.total)/100", sante.niveau)
                 }
                 if let reco {
@@ -84,7 +84,7 @@ struct AnalysesView: View {
                             Spacer(minLength: 0)
                         }
                         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                        .verre(.clear.interactive(), in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+                        .surface(in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
                     }
                     .buttonStyle(.plain)
                 }
@@ -106,7 +106,7 @@ struct AnalysesView: View {
             Text(s).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .verre(.clear, in: .rect(cornerRadius: 18))
+        .surface(in: .rect(cornerRadius: 18))
     }
 
     private func tuile(_ symbole: String, _ nom: String) -> some View {
@@ -116,7 +116,7 @@ struct AnalysesView: View {
             Text(nom).font(.footnote.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
         }
         .padding(12).frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
-        .verre(.clear.interactive(), in: .rect(cornerRadius: 20)).contentShape(.rect(cornerRadius: 20))
+        .surface(in: .rect(cornerRadius: 20)).contentShape(.rect(cornerRadius: 20))
     }
 }
 
@@ -139,7 +139,7 @@ struct ToutesRubriquesView: View {
                                         .font(.caption.weight(.semibold)).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
                                 }
                                 .padding(8).frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .verre(.clear.interactive(), in: .rect(cornerRadius: 20)).contentShape(.rect(cornerRadius: 20))
+                                .surface(in: .rect(cornerRadius: 20)).contentShape(.rect(cornerRadius: 20))
                             }
                             .buttonStyle(.plain)
                         }

@@ -120,7 +120,7 @@ struct ComptesView: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .verre(.clear.interactive(), in: .rect(cornerRadius: 24))
+            .surface(in: .rect(cornerRadius: 24))
             .contentShape(.rect(cornerRadius: 24))
         }
         .buttonStyle(.plain)
@@ -206,6 +206,6 @@ struct HistoriqueCompteView: View {
 
     private func bloc(_ t: String, _ v: String, _ c: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) { Text(t).font(.caption).foregroundStyle(.secondary); Text(v).font(.headline).monospacedDigit().foregroundStyle(c) }
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading).verre(.clear, in: .rect(cornerRadius: 18))
+            .padding(12).frame(maxWidth: .infinity, alignment: .leading).surface(in: .rect(cornerRadius: 18))
     }
 }

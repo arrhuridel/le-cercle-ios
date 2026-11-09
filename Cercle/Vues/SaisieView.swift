@@ -61,7 +61,7 @@ struct SaisieView: View {
                         }
                     }
                 }
-                .scrollClipDisabled()
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.86), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing))
                 if type == .virement {
                     ligne("De") { puces(magasin.comptes, $compte) }
                     ligne("Vers") { puces(magasin.comptes, $vers) }
@@ -125,7 +125,7 @@ struct SaisieView: View {
                 }
                 .padding(.vertical, 3)
             }
-            .scrollClipDisabled()
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.86), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing))
             .sensoryFeedback(.selection, trigger: sc)
             .onChange(of: sc) { _, n in if let n { withAnimation { lecteur.scrollTo(n, anchor: .center) } } }
         }
