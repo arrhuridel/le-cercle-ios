@@ -1,0 +1,20 @@
+# Déploiement Render (gratuit) : Render > New > Blueprint > choisir ce dépôt.
+# Les 3 secrets sont demandés au moment de la création (sync: false = jamais stockés dans le code).
+services:
+  - type: web
+    name: budget-amis
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: APP_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false

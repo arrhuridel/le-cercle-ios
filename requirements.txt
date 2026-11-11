@@ -1,0 +1,7 @@
+# Budget partagé entre amis — dépendances (testées avec Python 3.11 à 3.14)
+streamlit>=1.65,<2.0
+supabase>=2.20,<3.0
+plotly>=6.0,<8.0
+pandas>=2.2,<4.0
+# Base de fuseaux horaires (indispensable sous Windows pour "Europe/Paris")
+tzdata>=2024.1
