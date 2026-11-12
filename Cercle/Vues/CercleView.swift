@@ -7,7 +7,6 @@ struct CercleView: View {
     @Environment(Magasin.self) private var magasin
     @AppStorage("faceId") private var faceId = false
     @AppStorage("masque") private var masque = false
-    @AppStorage("theme") private var theme = "sombre"
     @State private var nouveauGroupe = false
     @AppStorage(ThemeCouleurs.cle) private var couleurs = ThemeCouleurs.nuit.rawValue
     @State private var edite: Champ?
@@ -32,16 +31,17 @@ struct CercleView: View {
                         }
                     }
                 }
+                BandeauEtat()
                 if groupes.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "person.3").font(.largeTitle).foregroundStyle(.secondary)
                         Text("Aucun groupe pour l'instant").font(.headline)
                         Text("Coloc, voyage, soirée : partage une dépense, Le Cercle calcule qui doit quoi.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         Button { nouveauGroupe = true } label: { Text("Créer un groupe").font(.headline).frame(maxWidth: .infinity, minHeight: 46).contentShape(.capsule) }
-                            .buttonStyle(.plain).verre(.clear.interactive().tint(.primary.opacity(0.2)), in: .capsule)
+                            .buttonStyle(.plain).verre(.regular.interactive().tint(.primary.opacity(0.2)), in: .capsule)
                     }
                     .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .surface(in: .rect(cornerRadius: 26))
+                    .surface(in: .rect(cornerRadius: 24))
                 } else {
                     ScrollView {
                         VStack(spacing: 10) {
@@ -50,7 +50,7 @@ struct CercleView: View {
                             }
                             Button { nouveauGroupe = true } label: {
                                 HStack(spacing: 10) { Image(systemName: "plus").frame(width: 30, height: 30).background(.white.opacity(0.1), in: .circle); Text("Nouveau groupe").fontWeight(.semibold); Spacer() }
-                                    .padding(14).surface(in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+                                    .padding(16).surface(in: .rect(cornerRadius: 24)).contentShape(.rect(cornerRadius: 24))
                             }
                             .buttonStyle(.plain)
                         }
@@ -59,7 +59,6 @@ struct CercleView: View {
                     .scrollIndicators(.hidden)
                     .refreshable { await magasin.rafraichir() }
                 }
-                espace
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
             .background(FondView())
@@ -91,33 +90,10 @@ struct CercleView: View {
                 if abs(s) >= 0.005 { Text(s > 0 ? "on te doit" : "tu dois").font(.caption).foregroundStyle(.secondary) }
             }
         }
-        .padding(14).surface(in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+        .padding(16).surface(in: .rect(cornerRadius: 24)).contentShape(.rect(cornerRadius: 24))
     }
 
-    /// Réglages rapides ; le reste est dans « Tous les réglages ».
-    private var espace: some View {
-        VStack(spacing: 0) {
-            // Budget et objectif d'épargne ne se saisissent plus : le total du mois = salaire + CAF, l'épargne = 20 % des revenus (08/11)
-            Toggle("Verrouiller avec Face ID", isOn: $faceId).padding(.vertical, 9)
-            Divider().opacity(0.4)
-            Toggle("Masquer les montants", isOn: $masque).padding(.vertical, 9)
-            Divider().opacity(0.4)
-            HStack {
-                Text("Apparence"); Spacer()
-                Picker("Apparence", selection: $theme) { Text("Sombre").tag("sombre"); Text("Clair").tag("clair"); Text("Auto").tag("auto") }.labelsHidden().tint(.secondary)
-            }
-            .padding(.vertical, 3)
-            Divider().opacity(0.4)
-            NavigationLink { MonEspaceView() } label: {
-                HStack { Text("Tous les réglages"); Spacer(); Text("données, membres, compte").font(.footnote).foregroundStyle(.secondary); Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary) }
-                    .padding(.vertical, 11).contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-        }
-        .tint(.positif)
-        .padding(.horizontal, 16).padding(.vertical, 2)
-        .surface(in: .rect(cornerRadius: 24))
-    }
+    // Les réglages ne sont plus dans cet onglet : ils s'ouvrent par la roue crantée du Résumé (Mon espace).
 
     private func ligneBouton(_ titre: String, _ valeur: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -149,7 +125,6 @@ struct MonEspaceView: View {
     @AppStorage("faceId") private var faceId = false
     @AppStorage("masque") private var masque = false
     @AppStorage("confidentiel") private var confidentiel = false
-    @AppStorage("theme") private var theme = "sombre"
     @AppStorage("notifications") private var notifications = true
     @State private var confirmerSortie = false
     @State private var budget = ""
@@ -178,9 +153,25 @@ struct MonEspaceView: View {
                     Toggle("Masquer les montants", isOn: $masque)
                     Toggle(isOn: $confidentiel) { VStack(alignment: .leading) { Text("Mode confidentiel"); Text("Montants arrondis à la dizaine").font(.caption).foregroundStyle(.secondary) } }
                     Toggle("Notifications d'enveloppes", isOn: $notifications).onChange(of: notifications) { _, v in if v { Notif.autoriser() } }
-                    Picker("Apparence", selection: $theme) { Text("Sombre").tag("sombre"); Text("Clair").tag("clair"); Text("Auto").tag("auto") }.pickerStyle(.segmented)
                 }
                 .tint(.positif)
+                // Mise à jour à la demande (remplace « tirer pour rafraîchir », qui ne marchait pas sur les écrans fixes)
+                Button { Task { await magasin.rafraichir() } } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "arrow.clockwise").frame(width: 34, height: 34).background(.white.opacity(0.1), in: .rect(cornerRadius: 11))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Mettre à jour maintenant").fontWeight(.semibold)
+                            Text(magasin.etat == .demo ? "Mode démo : rien à lire" : magasin.misAJour.map { "Dernière lecture de la base à \($0.formatted(date: .omitted, time: .shortened))" } ?? "Pas encore lu depuis l'ouverture")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if magasin.chargement { ProgressView() }
+                    }
+                    .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                    .surface(in: .rect(cornerRadius: 24)).contentShape(.rect(cornerRadius: 24))
+                }
+                .buttonStyle(.plain)
+                .disabled(magasin.chargement || magasin.etat == .demo)
                 CarteVerre(espacement: 12) {
                     NavigationLink("Données : import, capture, règles, sauvegarde") { DonneesView() }
                     NavigationLink("Membres du Cercle") { MembresView() }
@@ -197,7 +188,7 @@ struct MonEspaceView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 // Numéro de fabrication GitHub : il change à chaque version, pour vérifier ce qui est installé
                 Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?") · fabrication \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")")
-                    .font(.caption).foregroundStyle(.tertiary)
+                    .font(.caption).foregroundStyle(.secondary)
             }
             .navigationTitle("Réglages")
             .refreshable { await magasin.rafraichir() }
@@ -312,14 +303,14 @@ struct GroupeView: View {
                     }
                 }
                 ShareLink(item: bilan(g, soldes)) { Label("Partager le bilan", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity).padding(.vertical, 12) }
-                    .verre(.clear.interactive(), in: .capsule).tint(.primary)
+                    .verre(.regular.interactive(), in: .capsule).tint(.primary)
                 Text("Ta part compte dans tes dépenses. Ce que tu avances et les remboursements sont des virements : ils bougent ton compte sans fausser ton budget.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .safeAreaInset(edge: .bottom) {
                 Button { ajout = true } label: { Label("Ajouter une dépense partagée", systemImage: "plus").font(.headline).frame(maxWidth: .infinity, minHeight: 50).contentShape(.capsule) }
                     .buttonStyle(.plain)
-                    .verre(.clear.interactive().tint(.primary.opacity(0.2)), in: .capsule)
+                    .verre(.regular.interactive().tint(.primary.opacity(0.2)), in: .capsule)
                     .padding(.horizontal, 16).padding(.bottom, 8)
             }
             .navigationTitle(g.groupe.nom)

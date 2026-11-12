@@ -4,6 +4,7 @@ import SwiftUI
 struct ActiviteView: View {
     @Environment(Magasin.self) private var magasin
     @State private var recherche = ""
+    @State private var requete = ""        // la recherche appliquée, 250 ms après la dernière lettre
     @State private var filtre = "Tout"
     @State private var compte: String? = nil
     @State private var mois: String? = nil
@@ -14,7 +15,9 @@ struct ActiviteView: View {
     private let filtres = ["Tout", "Dépenses", "Revenus", "Épargne", "Partagé"]
 
     private var filtrees: [Operation] {
-        let q = recherche.sansAccents
+        let q = requete.sansAccents
+        // Le texte cherché de chaque opération est préparé une seule fois (pas à chaque lettre tapée)
+        let cles = q.isEmpty ? [:] : magasin.clesRecherche
         return magasin.toutes.filter { o in
             switch filtre {
             case "Dépenses": if !o.cat.estDepense { return false }
@@ -25,7 +28,7 @@ struct ActiviteView: View {
             }
             if let compte, !(o.compte == compte || (o.cat == .virement && o.vers == compte)) { return false }
             if let mois, !o.date.hasPrefix(mois) { return false }
-            return q.isEmpty || "\(o.note) \(o.sc) \(magasin.nomCompte(o.compte))".sansAccents.contains(q)
+            return q.isEmpty || (cles[o.id] ?? "").contains(q)
         }
         .sorted { ($0.date, $0.creeLe ?? "") > ($1.date, $1.creeLe ?? "") }
     }
@@ -34,7 +37,8 @@ struct ActiviteView: View {
         let ops = filtrees
         let jours = Dictionary(grouping: ops.prefix(limite), by: \.date).sorted { $0.key > $1.key }
         let b = Calc.bilan(ops)
-        NavigationStack {
+        // Pas de NavigationStack ici : l'écran est ouvert depuis l'onglet Comptes, qui a déjà le sien
+        Group {
             List {
                 Section {
                     Picker("Filtre", selection: $filtre) { ForEach(filtres, id: \.self) { Text($0) } }.pickerStyle(.segmented)
@@ -66,8 +70,8 @@ struct ActiviteView: View {
                 }
                 .listRowBackground(Color.clear)
                 if ops.isEmpty {
-                    ContentUnavailableView(recherche.isEmpty ? "Aucune opération" : "Aucun résultat", systemImage: "magnifyingglass",
-                                           description: Text(recherche.isEmpty ? "Rien dans ce filtre pour l'instant." : "Rien ne correspond à cette recherche."))
+                    ContentUnavailableView(requete.isEmpty ? "Aucune opération" : "Aucun résultat", systemImage: "magnifyingglass",
+                                           description: Text(requete.isEmpty ? "Rien dans ce filtre pour l'instant." : "Rien ne correspond à cette recherche."))
                         .listRowBackground(Color.clear)
                 }
                 ForEach(jours, id: \.key) { jour, l in
@@ -83,13 +87,22 @@ struct ActiviteView: View {
                     }
                 }
                 if ops.count > limite {
-                    Button("Afficher plus (\(ops.count - limite) restantes)") { limite += 200 }.frame(maxWidth: .infinity).listRowBackground(Color.clear)
+                    // La suite se charge toute seule en arrivant en bas de la liste
+                    ProgressView().frame(maxWidth: .infinity).listRowBackground(Color.clear).listRowSeparator(.hidden)
+                        .id(limite)
+                        .onAppear { limite += 200 }
                 }
             }
             .scrollContentBackground(.hidden)
             .background(FondView())
             .searchable(text: $recherche, prompt: "Rechercher une note, une catégorie…")
-            .navigationTitle("Activité")
+            .task(id: recherche) {
+                if recherche.isEmpty { requete = ""; return }
+                try? await Task.sleep(for: .milliseconds(250))
+                if !Task.isCancelled { requete = recherche }
+            }
+            .sensoryFeedback(.selection, trigger: filtre)
+            .navigationTitle("Opérations")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: ExportCSV(ops: ops, magasin: magasin), preview: SharePreview("Opérations (CSV)")) { Image(systemName: "square.and.arrow.up") }

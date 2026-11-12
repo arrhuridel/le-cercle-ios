@@ -34,6 +34,12 @@ final class Magasin {
     @ObservationIgnored private var cacheLivrets: (Int, Livrets?)?
     @ObservationIgnored private var cacheTableau: (String, Tableau)?
     @ObservationIgnored private var rafraichissementEnCours = false
+    /// Résultats de calculs lourds, gardés tant que les données et le jour ne changent pas.
+    @ObservationIgnored private var cacheCalculs: [String: (String, Any)] = [:]
+    /// Écriture de la copie locale en cours (hors du fil d'affichage, une à la fois).
+    @ObservationIgnored private var ecriture: Task<Void, Never>?
+    /// Heure de la dernière lecture réussie de la base (affichée dans les réglages).
+    var misAJour: Date?
 
     private var client: SupabaseClient?
     let configure: Bool
@@ -60,7 +66,25 @@ final class Magasin {
         cacheToutes = (revision, t)
         return t
     }
-    var comptes: [String] { Calc.comptes(ops) }
+    /// Garde le résultat d'un calcul tant que les données (revision) et le jour sont les mêmes.
+    func memo<T>(_ cle: String, _ calcul: () -> T) -> T {
+        let etat = "\(revision)|\(J.auj)"
+        if let c = cacheCalculs[cle], c.0 == etat, let v = c.1 as? T { return v }
+        let v = calcul()
+        cacheCalculs[cle] = (etat, v)
+        return v
+    }
+    var comptes: [String] { memo("comptes") { Calc.comptes(ops) } }
+    /// Prélèvements réguliers détectés dans tout l'historique.
+    var prelevements: [Prelevements.Prelevement] { memo("prelevements|\(Fmt.masque)|\(Fmt.confidentiel)") { Prelevements.liste(toutes) } }
+    /// Texte de recherche de chaque opération (sans accents, en minuscules), préparé une seule fois.
+    var clesRecherche: [String: String] {
+        memo("recherche") {
+            var d: [String: String] = [:]
+            for o in toutes { d[o.id] = "\(o.note) \(o.sc) \(nomCompte(o.compte))".sansAccents }
+            return d
+        }
+    }
     /// Livrets d'après les relevés enregistrés par le site (même calcul que le site).
     var livrets: Livrets? {
         if let c = cacheLivrets, c.0 == revision { return c.1 }
@@ -74,7 +98,7 @@ final class Magasin {
         if k.hasPrefix("cercle:") { let id = String(k.dropFirst(7)); return "Cercle · " + (groupes.first { $0.id == id }?.groupe.nom ?? "groupe") }
         return k
     }
-    func solde(_ compte: String) -> Double { Calc.solde(toutes, compte, jusqua: J.auj, initial: soldesInitiaux[compte] ?? 0) }
+    func solde(_ compte: String) -> Double { memo("solde|" + compte) { Calc.solde(toutes, compte, jusqua: J.auj, initial: soldesInitiaux[compte] ?? 0) } }
 
     /// Période choisie (Résumé), partagée par tous les écrans : Conseiller, Score, notifications…
     var periodeChoisie: (mode: Calc.Mode, perso: (String, String)) {
@@ -100,7 +124,7 @@ final class Magasin {
         // currentSession se lit sans réseau : on ouvre la copie locale tout de suite, même hors ligne,
         // puis on rafraîchit (le jeton est renouvelé à ce moment-là s'il a expiré).
         if client.auth.currentSession != nil {
-            lireCopieLocale()
+            await lireCopieLocale()
             etat = .connecte
             publierWidgets()
             await rafraichir()
@@ -133,6 +157,10 @@ final class Magasin {
 
     func deconnecter() async {
         if etat == .connecte { try? await client?.auth.signOut() }
+        // On attend la fin d'une écriture en cours : sinon elle recréerait le fichier après la déconnexion
+        ecriture?.cancel()
+        await ecriture?.value
+        ecriture = nil
         try? FileManager.default.removeItem(at: Self.fichierCopie)
         viderTout()
         etat = .deconnecte
@@ -148,6 +176,12 @@ final class Magasin {
     }
 
     // MARK: Lecture depuis Supabase
+
+    /// En revenant dans l'app : on ne relit la base que si la dernière lecture date de plus d'une minute.
+    func rafraichirSiAncien() async {
+        if let d = misAJour, Date().timeIntervalSince(d) < 60 { return }
+        await rafraichir()
+    }
 
     func rafraichir() async {
         guard etat == .connecte, let client else { return }
@@ -168,6 +202,13 @@ final class Magasin {
                 erreur = "Ton compte n'est relié à aucun profil du site. Lance la ligne SQL du guide pour le relier."
                 return
             }
+            // Les petites tables sont lues en même temps que les opérations (avant : l'une après l'autre)
+            async let lectureEnv: [Enveloppe] = try await client.from("enveloppes").select().execute().value
+            async let lectureObj: [Objectif] = try await client.from("objectifs").select().execute().value
+            async let lecturePla: [Planifiee] = try await client.from("operations_planifiees").select().execute().value
+            async let lectureMvt: [MouvementTitre] = try await client.from("mouvements_titres").select().execute().value
+            async let lectureCrs: [Cours] = try await client.from("cours").select().order("date_cours", ascending: false).limit(2000).execute().value
+            async let lectureGs: [Groupe] = try await client.from("groupes").select().execute().value
             var toutes: [Operation] = []
             var debut = 0
             while true {   // PostgREST renvoie 1 000 lignes au plus par requête
@@ -180,19 +221,22 @@ final class Magasin {
             }
             var vues = Set<String>()
             toutes = toutes.filter { vues.insert($0.id).inserted }   // sécurité : jamais deux fois la même opération
-            let env: [Enveloppe] = try await client.from("enveloppes").select().execute().value
-            let obj: [Objectif] = try await client.from("objectifs").select().execute().value
-            let pla: [Planifiee] = try await client.from("operations_planifiees").select().execute().value
-            let mvt: [MouvementTitre] = try await client.from("mouvements_titres").select().execute().value
-            let crs: [Cours] = try await client.from("cours").select().order("date_cours", ascending: false).limit(2000).execute().value
+            let env = try await lectureEnv
+            let obj = try await lectureObj
+            let pla = try await lecturePla
+            let mvt = try await lectureMvt
+            let crs = try await lectureCrs
+            let gs = try await lectureGs
             let mbr: [Membre] = (try? await client.rpc("membres").execute().value) ?? []
-            let gs: [Groupe] = try await client.from("groupes").select().execute().value
             var grp: [GroupeComplet] = []
             if !gs.isEmpty {
                 let ids = gs.map(\.id)
-                let parts: [Participant] = try await client.from("participants").select().in("groupe_id", values: ids).execute().value
-                let deps: [DepensePartagee] = try await client.from("depenses_partagees").select().in("groupe_id", values: ids).execute().value
-                let regs: [Reglement] = try await client.from("reglements").select().in("groupe_id", values: ids).execute().value
+                async let lectureParts: [Participant] = try await client.from("participants").select().in("groupe_id", values: ids).execute().value
+                async let lectureDeps: [DepensePartagee] = try await client.from("depenses_partagees").select().in("groupe_id", values: ids).execute().value
+                async let lectureRegs: [Reglement] = try await client.from("reglements").select().in("groupe_id", values: ids).execute().value
+                let parts = try await lectureParts
+                let deps = try await lectureDeps
+                let regs = try await lectureRegs
                 grp = gs.map { g in GroupeComplet(groupe: g, participants: parts.filter { $0.groupeId == g.id },
                                                   depenses: deps.filter { $0.groupeId == g.id }, reglements: regs.filter { $0.groupeId == g.id }) }
             }
@@ -203,6 +247,7 @@ final class Magasin {
                 regles.append(Import.Regle(motif: cle, sc: v[0], note: v[1]))
             }
             horsLigne = false; sessionExpiree = false
+            misAJour = Date()
             ecrireCopieLocale()
             await appliquerPlanifiees()
         } catch {
@@ -403,14 +448,27 @@ final class Magasin {
                    groupes: groupes.map(\.groupe), participants: groupes.flatMap(\.participants), depenses: groupes.flatMap(\.depenses),
                    reglements: groupes.flatMap(\.reglements), mouvements: mouvements, cours: cours, misAJour: Date())
     }
+    /// Écrit la copie locale hors du fil d'affichage : enregistrer une dépense ne fige plus l'écran.
+    /// Les écritures se suivent une à une, pour que la plus récente soit toujours la dernière sur le disque.
     private func ecrireCopieLocale() {
         guard etat == .connecte else { return }
-        // Protection iOS : le fichier est chiffré et illisible tant que l'iPhone est verrouillé
-        try? JSONEncoder().encode(instantane).write(to: Self.fichierCopie, options: [.atomic, .completeFileProtection])
+        let contenu = instantane, fichier = Self.fichierCopie, precedente = ecriture
+        ecriture = Task.detached(priority: .utility) {
+            await precedente?.value
+            guard !Task.isCancelled else { return }
+            // Protection iOS : le fichier est chiffré et illisible tant que l'iPhone est verrouillé
+            try? JSONEncoder().encode(contenu).write(to: fichier, options: [.atomic, .completeFileProtection])
+        }
         publierWidgets()   // les widgets suivent chaque mise à jour et chaque saisie
     }
-    private func lireCopieLocale() {
-        guard let d = try? Data(contentsOf: Self.fichierCopie), let i = try? JSONDecoder().decode(Instantane.self, from: d) else { return }
+    /// Lit la copie locale hors du fil d'affichage (l'écran de démarrage reste fluide).
+    private func lireCopieLocale() async {
+        let fichier = Self.fichierCopie
+        let lu: Instantane? = await Task.detached(priority: .userInitiated) { () -> Instantane? in
+            guard let d = try? Data(contentsOf: fichier) else { return nil }
+            return try? JSONDecoder().decode(Instantane.self, from: d)
+        }.value
+        guard let i = lu else { return }
         profil = i.profil; membres = i.membres; ops = i.ops; enveloppes = i.enveloppes; objectifs = i.objectifs; planifiees = i.planifiees
         mouvements = i.mouvements; cours = i.cours
         groupes = i.groupes.map { g in GroupeComplet(groupe: g, participants: i.participants.filter { $0.groupeId == g.id },

@@ -20,6 +20,7 @@ struct SaisieView: View {
     @State private var devise = "EUR"
     @State private var indice = ""
     @State private var photo: PhotosPickerItem?
+    @State private var choixPhoto = false   // ouvre le sélecteur de photos depuis le menu « … »
     @State private var lecture = false
     @State private var secoue = 0
     @FocusState private var noteActive: Bool
@@ -51,17 +52,22 @@ struct SaisieView: View {
                 .buttonStyle(.plain)
                 Text(indice.isEmpty ? (sc == nil && type != .virement ? "Choisis une catégorie, puis tape le montant" : "") : indice)
                     .font(.footnote).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: .infinity).frame(height: 16)
-                // Raccourcis (ou montants rapides quand il n'y en a pas)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        if edition == nil && !raccourcis.isEmpty {
-                            ForEach(raccourcis, id: \.id) { o in Button("\(o.note.isEmpty ? o.sc : o.note) · \(Fmt.eur(o.montant))") { remplir(o) }.puce(false) }
-                        } else {
-                            ForEach([5, 10, 20, 50], id: \.self) { v in Button("\(v) €") { montant = "\(v)" }.puce(false) }
+                // Raccourcis : les 3 plus fréquents, visibles d'un coup (ou des montants rapides quand il n'y en a pas).
+                // Plus de rangée qui défile de côté.
+                HStack(spacing: 8) {
+                    if edition == nil && !raccourcis.isEmpty {
+                        ForEach(raccourcis.prefix(3), id: \.id) { o in
+                            Button { remplir(o) } label: {
+                                Text("\(o.note.isEmpty ? o.sc : o.note) · \(Fmt.eur(o.montant))").lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity)
+                            }
+                            .puce(false)
+                        }
+                    } else {
+                        ForEach([5, 10, 20, 50], id: \.self) { v in
+                            Button { montant = "\(v)" } label: { Text("\(v) €").frame(maxWidth: .infinity) }.puce(false)
                         }
                     }
                 }
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.86), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing))
                 if type == .virement {
                     ligne("De") { puces(magasin.comptes, $compte) }
                     ligne("Vers") { puces(magasin.comptes, $vers) }
@@ -73,67 +79,89 @@ struct SaisieView: View {
                         }
                     }
                 }
-                HStack(spacing: 8) {
-                    TextField(type == .virement ? "Note (facultatif)" : "Note : Lidl, cinéma…", text: $note).focused($noteActive)
-                        .onChange(of: note) { _, n in deviner(n) }
-                        .padding(.horizontal, 14).frame(height: 40)
-                        .verre(.clear, in: .capsule)
-                    DatePicker("Date", selection: $date, in: ...Date(), displayedComponents: .date).labelsHidden().tint(.primary)
-                    PhotosPicker(selection: $photo, matching: .images) {
-                        Image(systemName: lecture ? "hourglass" : "text.viewfinder").frame(width: 40, height: 40).verre(.clear.interactive(), in: .circle)
+                // Une seule ligne : la note, la date, et un seul bouton « … » pour le reste (capture, compte, devise, répétition)
+                GlassEffectContainer(spacing: 8) {
+                    HStack(spacing: 8) {
+                        TextField(type == .virement ? "Note (facultatif)" : "Note : Lidl, cinéma…", text: $note).focused($noteActive)
+                            .onChange(of: note) { _, n in deviner(n) }
+                            .padding(.horizontal, 16).frame(height: 44)
+                            .verre(.regular, in: .capsule)
+                        DatePicker("Date", selection: $date, in: ...Date(), displayedComponents: .date).labelsHidden().tint(.primary)
+                        options
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Lire une capture d'écran ou un ticket")
-                    options
                 }
                 Spacer(minLength: 0)
-                if !noteActive { pave }
+                if !noteActive { pave.transition(.move(edge: .bottom).combined(with: .opacity)) }
             }
             .padding(.horizontal, 16).padding(.top, 4)
+            .animation(reduire ? nil : .smooth(duration: 0.25), value: noteActive)   // le pavé glisse au lieu de sauter
             .background(FondView())
             .overlay { if reussi { succes } }
             .navigationTitle(edition == nil ? "Nouvelle opération" : "Modifier").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Annuler") { fermer() } }
-                // « Enregistrer » reste accessible en haut même quand le clavier cache le pavé
-                ToolbarItem(placement: .confirmationAction) { Button("Enregistrer") { Task { await enregistrer() } }.fontWeight(.semibold).disabled(enCours) }
+                // Un seul « Enregistrer » à la fois : celui du pavé, ou celui-ci quand le clavier cache le pavé
+                if noteActive {
+                    ToolbarItem(placement: .confirmationAction) { Button("Enregistrer") { Task { await enregistrer() } }.fontWeight(.semibold).disabled(enCours) }
+                }
                 ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("OK") { noteActive = false } }
             }
             .onAppear(perform: preparer)
+            .photosPicker(isPresented: $choixPhoto, selection: $photo, matching: .images)
             .onChange(of: photo) { _, p in if let p { Task { await lireCapture(p) } } }
             .sensoryFeedback(.success, trigger: reussi)
+            .sensoryFeedback(.error, trigger: secoue)
         }
         .presentationDragIndicator(.visible)
     }
 
-    /// Les catégories sur une ligne qui défile de côté ; la catégorie choisie est mise en valeur.
+    /// Les catégories en grille de 4 : les plus utilisées d'abord, puis « Autres » pour le reste.
+    /// Rien ne défile de côté ; la catégorie choisie reste toujours visible.
     private var categories: some View {
-        ScrollViewReader { lecteur in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(themes, id: \.nom) { t in
-                        Button { withAnimation(.snappy) { sc = t.nom }; choixManuel = true; indice = "" } label: {
-                            VStack(spacing: 5) { Tuile(sc: t.nom, taille: 32); Text(t.court).font(.caption2.weight(.medium)).lineLimit(1) }
-                                .frame(width: 70, height: 70)
-                                .background(sc == t.nom ? Color.primary.opacity(0.16) : Color.clear, in: .rect(cornerRadius: 18))
-                                .verre(.clear.interactive(), in: .rect(cornerRadius: 18))
-                                .scaleEffect(sc == t.nom ? 1.04 : 1)
-                        }
-                        .buttonStyle(.plain)
-                        .id(t.nom)
-                    }
-                }
-                .padding(.vertical, 3)
-            }
-            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.86), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing))
-            .sensoryFeedback(.selection, trigger: sc)
-            .onChange(of: sc) { _, n in if let n { withAnimation { lecteur.scrollTo(n, anchor: .center) } } }
+        let tous = themes
+        var visibles = Array(tous.prefix(tous.count > 8 ? 7 : 8))
+        if let s = sc, !visibles.isEmpty, !visibles.contains(where: { $0.nom == s }), let t = tous.first(where: { $0.nom == s }) {
+            visibles[visibles.count - 1] = t   // une catégorie prise dans « Autres » prend la dernière case
         }
+        let noms = Set(visibles.map(\.nom))
+        let autres = tous.filter { !noms.contains($0.nom) }
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+            ForEach(visibles, id: \.nom) { t in
+                Button { choisir(t.nom) } label: {
+                    VStack(spacing: 4) { Tuile(sc: t.nom, taille: 28); Text(t.court).font(.caption.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8) }
+                        .frame(maxWidth: .infinity, minHeight: 60)
+                }
+                .buttonStyle(StyleTouche(active: sc == t.nom))
+                .accessibilityLabel(t.nom)
+                .accessibilityAddTraits(sc == t.nom ? .isSelected : [])
+            }
+            if !autres.isEmpty {
+                Menu {
+                    ForEach(autres, id: \.nom) { t in Button(t.nom) { choisir(t.nom) } }
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "ellipsis").font(.system(size: 13, weight: .medium)).frame(width: 28, height: 28)
+                        Text("Autres").font(.caption.weight(.medium)).lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 60)
+                    .background(Color.white.opacity(0.07), in: .rect(cornerRadius: 16))
+                    .contentShape(.rect(cornerRadius: 16))
+                }
+                .tint(.primary)
+            }
+        }
+        .sensoryFeedback(.selection, trigger: sc)
     }
 
-    /// Réglages rares : compte, devise et répétition mensuelle.
+    private func choisir(_ nom: String) {
+        sc = nom; choixManuel = true; indice = ""
+    }
+
+    /// Le bouton « … » : lire une capture, puis les réglages rares (compte, devise, répétition mensuelle).
     private var options: some View {
         Menu {
+            Button { choixPhoto = true } label: { Label(lecture ? "Lecture en cours…" : "Lire une capture ou un ticket", systemImage: "text.viewfinder") }
+                .disabled(lecture)
             if type != .virement {
                 Picker(type == .depense ? "Payé avec" : type == .revenu ? "Reçu sur" : "Depuis", selection: $compte) {
                     ForEach(magasin.comptes, id: \.self) { Text(magasin.nomCompte($0)).tag($0) }
@@ -144,11 +172,12 @@ struct SaisieView: View {
             }
             if edition == nil { Toggle("Répéter chaque mois (le \(J.comp(date).j))", isOn: $repeter) }
         } label: {
-            Image(systemName: repeter || devise != "EUR" ? "slider.horizontal.below.square.filled.and.square" : "slider.horizontal.3")
-                .frame(width: 40, height: 40).verre(.clear.interactive(), in: .circle)
+            // Le symbole plein signale qu'une option est active (répétition ou autre devise)
+            Image(systemName: lecture ? "hourglass" : repeter || devise != "EUR" ? "ellipsis.circle.fill" : "ellipsis")
+                .frame(width: 44, height: 44).contentShape(.circle).verre(.regular.interactive(), in: .circle)
         }
         .tint(.primary)
-        .accessibilityLabel("Options : compte, devise, répétition")
+        .accessibilityLabel("Plus d'options : capture, compte, devise, répétition")
     }
 
     private func ligne<C: View>(_ titre: String, @ViewBuilder _ c: () -> C) -> some View {
@@ -158,7 +187,7 @@ struct SaisieView: View {
     private var succes: some View {
         VStack(spacing: 12) {
             Image(systemName: "checkmark").font(.system(size: 40, weight: .semibold))
-                .frame(width: 96, height: 96).verre(.clear, in: .circle)
+                .frame(width: 96, height: 96).verre(.regular, in: .circle)
             Text("Enregistré").font(.headline)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -172,12 +201,13 @@ struct SaisieView: View {
         VStack(spacing: 8) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                 ForEach(["1", "2", "3", "4", "5", "6", "7", "8", "9", ",", "0", "⌫"], id: \.self) { t in
+                    // Touches sur surface simple : le verre est gardé pour « Enregistrer » (douze verres alourdissaient l'écran)
                     Button { touche(t) } label: {
                         Group { if t == "⌫" { Image(systemName: "delete.left") } else { Text(t) } }
-                            .font(.title2.weight(.medium)).frame(maxWidth: .infinity, minHeight: 50)
-                            .verre(.clear.interactive(), in: .rect(cornerRadius: 18)).contentShape(.rect(cornerRadius: 18))
+                            .font(.title2.weight(.medium)).frame(maxWidth: .infinity, minHeight: 46)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(StyleTouche())
+                    .accessibilityLabel(t == "⌫" ? "Effacer" : t == "," ? "Virgule" : t)
                 }
             }
             Button { Task { await enregistrer() } } label: {
@@ -186,7 +216,7 @@ struct SaisieView: View {
             }
             .buttonStyle(.plain)
             .disabled(enCours)
-            .verre(.clear.interactive().tint(.primary.opacity(0.25)), in: .capsule)
+            .verre(.regular.interactive().tint(.primary.opacity(0.25)), in: .capsule)
         }
         .padding(.top, 4).padding(.bottom, 12)
         .sensoryFeedback(.impact(weight: .light), trigger: montant)
@@ -215,9 +245,13 @@ struct SaisieView: View {
     // MARK: Données
 
     private var themes: [Theme] {
-        let limite = J.plus(J.auj, jours: -180)
-        var usage: [String: Int] = [:]
-        for o in magasin.ops where o.date >= limite { usage[o.sc, default: 0] += 1 }
+        // Le comptage des 6 derniers mois est gardé en mémoire (il était refait à chaque touche du pavé)
+        let usage: [String: Int] = magasin.memo("saisie.usage") {
+            let limite = J.plus(J.auj, jours: -180)
+            var u: [String: Int] = [:]
+            for o in magasin.ops where o.date >= limite { u[o.sc, default: 0] += 1 }
+            return u
+        }
         return type.themes.sorted { (usage[$0.nom] ?? 0) > (usage[$1.nom] ?? 0) }
     }
 
@@ -330,7 +364,7 @@ struct SaisieView: View {
             Notif.apresAjout(o, magasin: magasin)
         }
         withAnimation(reduire ? nil : .smooth(duration: 0.25)) { reussi = true }
-        try? await Task.sleep(for: .milliseconds(650))
+        try? await Task.sleep(for: .milliseconds(300))
         fermer()
     }
 }
@@ -342,7 +376,7 @@ extension Text {
 extension View {
     /// Une « puce » : sélection neutre, jamais bleue.
     func puce(_ active: Bool) -> some View {
-        self.font(.subheadline.weight(.medium)).padding(.horizontal, 13).padding(.vertical, 8)
+        self.font(.subheadline.weight(.medium)).padding(.horizontal, 12).frame(minHeight: 44)
             .background(active ? Color.primary.opacity(0.16) : Color.primary.opacity(0.06), in: Capsule())
             .foregroundStyle(active ? .primary : .secondary)
             .buttonStyle(.plain)

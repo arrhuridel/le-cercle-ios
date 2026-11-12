@@ -66,7 +66,8 @@ struct Jauge: View {
             }
         }
         .frame(height: hauteur)
-        .animation(.spring(response: 0.8, dampingFraction: 0.85), value: part)
+        .animation(.smooth(duration: 0.3), value: part)
+        .accessibilityHidden(true)
     }
 }
 
@@ -83,9 +84,9 @@ struct Kpi: View {
             Text(valeur).font(.title3.weight(.bold)).monospacedDigit().foregroundStyle(couleur).minimumScaleFactor(0.7).lineLimit(1)
             if !sous.isEmpty { Text(sous).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
         }
-        .padding(14)
+        .padding(16)
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .surface(in: .rect(cornerRadius: 22))
+        .surface(in: .rect(cornerRadius: 24))
     }
 }
 
@@ -138,7 +139,7 @@ struct LigneOperation: View {
 
 extension Text {
     func badge(_ couleur: Color = .secondary) -> some View {
-        self.font(.caption2.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 1)
+        self.font(.caption.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 1)
             .background(couleur.opacity(0.18), in: Capsule()).foregroundStyle(couleur)
     }
 }
@@ -197,6 +198,48 @@ struct Surface<S: Shape>: ViewModifier {
             .background { forme.fill(couleurCarte.opacity(0.94)) }
             .overlay { forme.stroke(LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.05)], startPoint: .top, endPoint: .bottom), lineWidth: 0.6) }
             .contentShape(forme)
+    }
+}
+
+/// Bandeau d'état en haut des écrans : pas de réseau, session expirée ou échec d'un enregistrement.
+/// Rien ne s'affiche quand tout va bien. Toucher le bandeau relance la lecture de la base.
+struct BandeauEtat: View {
+    @Environment(Magasin.self) private var magasin
+    var body: some View {
+        if magasin.sessionExpiree {
+            ligne("person.crop.circle.badge.exclamationmark", "Ta session a expiré.", "Se reconnecter") { Task { await magasin.deconnecter() } }
+        } else if let e = magasin.erreur {
+            ligne(magasin.horsLigne ? "wifi.slash" : "exclamationmark.triangle", e, "Réessayer") { Task { await magasin.rafraichir() } }
+        }
+    }
+    private func ligne(_ symbole: String, _ texte: String, _ bouton: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbole).foregroundStyle(Color.alerte)
+                Text(texte).font(.footnote).lineLimit(2).multilineTextAlignment(.leading)
+                Spacer(minLength: 8)
+                if magasin.chargement { ProgressView() } else { Text(bouton).font(.footnote.weight(.semibold)) }
+            }
+            .padding(.horizontal, 16).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(Color.alerte.opacity(0.14), in: .rect(cornerRadius: 16))
+            .contentShape(.rect(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+        .disabled(magasin.chargement)
+    }
+}
+
+/// Touche sur surface simple (pavé numérique, catégories) : pas de verre, juste un éclaircissement quand on appuie.
+/// Le verre liquide est gardé pour les commandes principales ; douze verres côte à côte alourdissent l'affichage.
+struct StyleTouche: ButtonStyle {
+    var active = false
+    var rayon: CGFloat = 16
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(Color.white.opacity(configuration.isPressed ? 0.22 : active ? 0.16 : 0.07), in: .rect(cornerRadius: rayon))
+            .overlay { if active { RoundedRectangle(cornerRadius: rayon).stroke(.white.opacity(0.35), lineWidth: 1) } }
+            .contentShape(.rect(cornerRadius: rayon))
+            .animation(.smooth(duration: 0.15), value: configuration.isPressed)
     }
 }
 

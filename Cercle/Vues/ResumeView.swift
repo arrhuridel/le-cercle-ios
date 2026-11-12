@@ -27,7 +27,7 @@ struct ResumeView: View {
                     }
                 } label: {
                     Label(t.per.libelle, systemImage: "calendar").font(.subheadline.weight(.medium))
-                        .padding(.horizontal, 12).padding(.vertical, 7).verre(.clear.interactive(), in: .capsule)
+                        .padding(.horizontal, 12).padding(.vertical, 7).verre(.regular.interactive(), in: .capsule)
                 }
                 .tint(.primary)
                 if magasin.etat == .demo { Text("Mode démo : données inventées").badge(.alerte) }

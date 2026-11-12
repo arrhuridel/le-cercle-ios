@@ -17,7 +17,11 @@ extension Magasin {
     static let comptesMasques: Set<String> = ["Prêt Léandre"]
 
     /// Tous les comptes et livrets, avec leur solde : le compte courant, les autres comptes, les placements et les livrets.
-    var comptesV3: [CompteV3] {
+    /// Gardé en mémoire tant que les données ne changent pas (le réglage « masquer » fait partie de la clé,
+    /// parce que le détail des placements contient des montants déjà écrits en texte).
+    var comptesV3: [CompteV3] { memo("comptesV3|\(Fmt.masque)|\(Fmt.confidentiel)") { calculerComptesV3() } }
+
+    private func calculerComptesV3() -> [CompteV3] {
         let ops = toutes, il30 = J.plus(J.auj, jours: -30)
         var l: [CompteV3] = []
         for k in comptes where !Magasin.comptesMasques.contains(k) {
@@ -46,11 +50,13 @@ extension Magasin {
     }
 }
 
-// MARK: - Activité (onglet 3) : tous les comptes
+// MARK: - Comptes (onglet 3) : tous les comptes, puis l'accès à toutes les opérations
 
 struct ComptesView: View {
     @Environment(Magasin.self) private var magasin
     @AppStorage("ordreComptes") private var ordreBrut = ""
+    @AppStorage("masque") private var masque = false   // l'écran se redessine quand on masque les montants
+    @Namespace private var zoom
 
     private func ordonner(_ l: [CompteV3]) -> [CompteV3] {
         let ordre = ordreBrut.split(separator: "|").map(String.init)
@@ -71,28 +77,50 @@ struct ComptesView: View {
     }
 
     var body: some View {
+        let _ = masque
         let l = ordonner(magasin.comptesV3), total = l.reduce(0) { $0 + $1.solde }
         NavigationStack {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 2) { Text("Tous tes comptes").font(.subheadline).foregroundStyle(.secondary); Text("Activité").font(.largeTitle.bold()) }
+                    VStack(alignment: .leading, spacing: 2) { Text("Tout ton argent").font(.subheadline).foregroundStyle(.secondary); Text("Comptes").font(.largeTitle.bold()) }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
-                        NavigationLink { ActiviteView() } label: { Label("Toutes les opérations", systemImage: "list.bullet").labelStyle(.iconOnly).frame(width: 44, height: 44).contentShape(.rect) }
-                            .buttonStyle(.plain).verre(.clear.interactive(), in: .circle)
+                        Text("au total").font(.footnote).foregroundStyle(.secondary)
                         Text(Fmt.eur(total, 0)).font(.title2.bold()).monospacedDigit()
                     }
+                    .padding(.bottom, 4)
                 }
+                BandeauEtat()
+                // Appui long sur une carte, puis glisser : change l'ordre des comptes
                 ForEach(Array(lignes(l).enumerated()), id: \.offset) { _, ligne in
-                    HStack(spacing: 10) { ForEach(ligne) { c in carte(c).draggable(c.id).dropDestination(for: String.self) { ids, _ in deplacer(ids.first, vers: c.id, l) } } }
-                        .frame(maxHeight: .infinity)
+                    HStack(spacing: 12) {
+                        ForEach(ligne) { c in
+                            carte(c)
+                                .matchedTransitionSource(id: c.id, in: zoom)
+                                .draggable(c.id).dropDestination(for: String.self) { ids, _ in deplacer(ids.first, vers: c.id, l) }
+                        }
+                    }
+                    .frame(maxHeight: .infinity)
                 }
+                // Les opérations ont leur propre ligne, lisible, au lieu d'une icône en haut de l'écran
+                NavigationLink { ActiviteView() } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "list.bullet").frame(width: 34, height: 34).background(.white.opacity(0.1), in: .rect(cornerRadius: 11))
+                        Text("Toutes les opérations").fontWeight(.semibold)
+                        Spacer()
+                        Chevron()
+                    }
+                    .padding(.horizontal, 16).frame(maxWidth: .infinity, minHeight: 56)
+                    .surface(in: .rect(cornerRadius: 24)).contentShape(.rect(cornerRadius: 24))
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
             .background(FondView())
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: CompteV3.self) { HistoriqueCompteView(compte: $0) }
-            .refreshable { await magasin.rafraichir() }
+            .navigationDestination(for: CompteV3.self) { c in
+                HistoriqueCompteView(compte: c).navigationTransition(.zoom(sourceID: c.id, in: zoom))
+            }
         }
     }
 
@@ -110,7 +138,7 @@ struct ComptesView: View {
                 HStack {
                     Text(c.logo).font(.caption.weight(.bold)).frame(width: 34, height: 34).background(.white.opacity(0.12), in: .rect(cornerRadius: 11))
                     Spacer()
-                    Text(c.type).font(.caption2).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 3).background(.white.opacity(0.07), in: Capsule())
+                    Text(c.type).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.vertical, 3).background(.white.opacity(0.07), in: Capsule())
                 }
                 Spacer(minLength: 4)
                 Text(c.nom).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
@@ -118,7 +146,7 @@ struct ComptesView: View {
                 Text(c.detail ?? "\(Fmt.eur(c.variation, signe: true)) sur 30 jours").font(.caption)
                     .foregroundStyle(c.detail == nil && c.variation > 0 ? Color.positif : .secondary).lineLimit(2)
             }
-            .padding(14)
+            .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .surface(in: .rect(cornerRadius: 24))
             .contentShape(.rect(cornerRadius: 24))
@@ -133,12 +161,16 @@ struct HistoriqueCompteView: View {
     @Environment(Magasin.self) private var magasin
     let compte: CompteV3
     @State private var recherche = ""
+    @State private var requete = ""        // la recherche appliquée, 250 ms après la dernière lettre
     @State private var filtre = "Tout"
     @State private var ouverte: Operation?
 
     struct Ligne: Identifiable { let id: String; let date: String; let titre: String; let sc: String; let montant: Double; let op: Operation? }
 
-    private var lignes: [Ligne] {
+    /// Les lignes du compte, calculées une fois (pas à chaque lettre tapée dans la recherche).
+    private var lignes: [Ligne] { magasin.memo("historique|" + compte.id) { calculerLignes() } }
+
+    private func calculerLignes() -> [Ligne] {
         if compte.estLivret, let lv = magasin.livrets {
             let nom = String(compte.id.dropFirst(7))
             var l = (lv.lignes[nom] ?? []).enumerated().map { i, x in Ligne(id: "r\(i)", date: x.date, titre: x.libelle.isEmpty ? "Mouvement" : x.libelle.capitalized, sc: "Livret", montant: x.montant, op: nil) }
@@ -155,7 +187,7 @@ struct HistoriqueCompteView: View {
     var body: some View {
         let toutes = lignes, il30 = J.plus(J.auj, jours: -30)
         let recentes = toutes.filter { $0.date > il30 }
-        let q = recherche.sansAccents.lowercased()
+        let q = requete.sansAccents
         let vues = toutes.filter { l in
             (filtre == "Tout" || (filtre == "Dépenses" ? l.montant < 0 && l.op?.cat != .virement : filtre == "Entrées" ? l.montant > 0 && l.op?.cat != .virement : l.op?.cat == .virement))
             && (q.isEmpty || "\(l.titre) \(l.sc)".sansAccents.lowercased().contains(q))
@@ -201,11 +233,17 @@ struct HistoriqueCompteView: View {
         .background(FondView())
         .navigationTitle(compte.nom)
         .searchable(text: $recherche, prompt: "Rechercher une opération")
+        .task(id: recherche) {
+            if recherche.isEmpty { requete = ""; return }
+            try? await Task.sleep(for: .milliseconds(250))
+            if !Task.isCancelled { requete = recherche }
+        }
+        .sensoryFeedback(.selection, trigger: filtre)
         .sheet(item: $ouverte) { DetailOperation(op: $0) }
     }
 
     private func bloc(_ t: String, _ v: String, _ c: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) { Text(t).font(.caption).foregroundStyle(.secondary); Text(v).font(.headline).monospacedDigit().foregroundStyle(c) }
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading).surface(in: .rect(cornerRadius: 18))
+            .padding(12).frame(maxWidth: .infinity, alignment: .leading).surface(in: .rect(cornerRadius: 16))
     }
 }

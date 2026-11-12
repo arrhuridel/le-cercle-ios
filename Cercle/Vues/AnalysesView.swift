@@ -18,79 +18,62 @@ enum Rubrique: String, CaseIterable, Identifiable {
     }
 }
 
-/// Analyses (design v3, sans défilement) : graphique, trois chiffres, le conseil du moment, six rubriques.
+/// Analyses (sans défilement) : le graphique des revenus et dépenses, trois chiffres, quatre rubriques essentielles.
 struct AnalysesView: View {
     @Environment(Magasin.self) private var magasin
     @State private var n = 6
     @State private var moisChoisi: String?
-    @State private var moisGarde: String?
-    @State private var pousse = false   // les barres poussent à l'ouverture
-    @Environment(\.accessibilityReduceMotion) private var reduire   // dernier mois touché : le détail reste affiché après avoir levé le doigt
+    @State private var moisGarde: String?   // dernier mois touché : le détail reste affiché après avoir levé le doigt
 
-    private let tuiles: [Rubrique] = [.depenses, .revenus]
+    /// Les quatre rubriques utiles pour suivre son argent (les autres ne sont plus proposées).
+    private let tuiles: [(Rubrique, String)] = [(.depenses, "Dépenses"), (.epargne, "Épargne"), (.patrimoine, "Patrimoine"), (.charges, "Charges fixes")]
 
     var body: some View {
-        let ops = magasin.toutes, t = magasin.tableau()
-        let donnees = Calc.mensuel(ops, n)
+        // Ces calculs sont gardés en mémoire : glisser le doigt sur le graphique ne recalcule plus tout l'historique
+        let donnees = magasin.memo("analyses.mensuel|\(n)") { Calc.mensuel(magasin.toutes, n) }
         let debut = donnees.first?.mois.debut ?? J.auj
         let nbMois = max(Double(J.ecart(debut, J.auj) + 1) / Ref.joursParMois, 1)
-        let b = Calc.bilan(Calc.entre(ops, debut, J.auj))
+        let b = magasin.memo("analyses.bilan|\(n)") { Calc.bilan(Calc.entre(magasin.toutes, debut, J.auj)) }
         let sel = donnees.first { $0.mois.libelle == (moisChoisi ?? moisGarde) }
-        let reco = Conseil.recommandations(t).first
-        let sante = Conseil.score(t, budgetMensuel: magasin.profil?.budget ?? 0)
         NavigationStack {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 2) { Text("Tes tendances").font(.subheadline).foregroundStyle(.secondary); Text("Analyses").font(.largeTitle.bold()) }
                     Spacer()
                     Picker("Durée", selection: $n) { Text("6 mois").tag(6); Text("12 mois").tag(12) }.pickerStyle(.segmented).frame(width: 150)
+                        .padding(.bottom, 6)
                 }
+                BandeauEtat()
                 VStack(alignment: .leading, spacing: 6) {
                     HStack { Text("Revenus et dépenses").font(.headline); Spacer()
                         Text(sel.map { "\($0.mois.long.capitalizedPremiere) : \(Fmt.eur($0.b.dep, 0))" } ?? "touche un mois").font(.footnote).foregroundStyle(.secondary) }
                     Chart {
                         ForEach(donnees, id: \.mois.cle) { m in
-                            BarMark(x: .value("Mois", m.mois.libelle), y: .value("Montant", m.b.rev * (pousse ? 1 : 0))).foregroundStyle(by: .value("Série", "Revenus")).position(by: .value("Série", "Revenus")).cornerRadius(4)
+                            BarMark(x: .value("Mois", m.mois.libelle), y: .value("Montant", m.b.rev)).foregroundStyle(by: .value("Série", "Revenus")).position(by: .value("Série", "Revenus")).cornerRadius(4)
                                 .opacity(sel == nil || sel?.mois.cle == m.mois.cle ? 1 : 0.3)
-                            BarMark(x: .value("Mois", m.mois.libelle), y: .value("Montant", m.b.dep * (pousse ? 1 : 0))).foregroundStyle(by: .value("Série", "Dépenses")).position(by: .value("Série", "Dépenses")).cornerRadius(4)
+                            BarMark(x: .value("Mois", m.mois.libelle), y: .value("Montant", m.b.dep)).foregroundStyle(by: .value("Série", "Dépenses")).position(by: .value("Série", "Dépenses")).cornerRadius(4)
                                 .opacity(sel == nil || sel?.mois.cle == m.mois.cle ? 1 : 0.3)
                         }
                     }
                     .chartForegroundStyleScale(["Revenus": Color.white.opacity(0.3), "Dépenses": Color.white])
                     .chartXSelection(value: $moisChoisi)
                     .chartYScale(domain: 0...max(donnees.map { max($0.b.rev, $0.b.dep) }.max() ?? 1, 1))
-                    .onAppear { withAnimation(reduire ? nil : .smooth(duration: 0.5)) { pousse = true } }
                     .onChange(of: moisChoisi) { _, v in if let v { moisGarde = v } }
                     .sensoryFeedback(.selection, trigger: moisGarde)
                     .frame(maxHeight: .infinity)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .surface(in: .rect(cornerRadius: 26))
+                .surface(in: .rect(cornerRadius: 24))
                 HStack(spacing: 8) {
                     chiffre("Dépenses/mois", Fmt.eur(b.dep / nbMois, 0), "sur \(n) mois")
                     chiffre("Épargne", b.rev > 0 ? Fmt.pct(b.epa / b.rev * 100) : "—", "repère : 20 %")
-                    chiffre("Santé", "\(sante.total)/100", sante.niveau)
+                    chiffre("Revenus/mois", Fmt.eur(b.rev / nbMois, 0), "sur \(n) mois")
                 }
-                if let reco {
-                    NavigationLink { ConseillerView() } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "lightbulb").frame(width: 34, height: 34).background(.white.opacity(0.1), in: .rect(cornerRadius: 11))
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Le conseil du moment").font(.subheadline.weight(.semibold))
-                                Text(reco.texte).font(.footnote).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading)
-                                if reco.gain > 1 { Text("≈ \(Fmt.eur(reco.gain, 0)) de plus par mois").font(.caption.weight(.semibold)).foregroundStyle(Color.positif) }
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                        .surface(in: .rect(cornerRadius: 22)).contentShape(.rect(cornerRadius: 22))
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), spacing: 8) {
+                    ForEach(tuiles, id: \.0) { r, nom in
+                        NavigationLink { RubriqueView(rubrique: r) } label: { tuile(r.symbole, nom) }.buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                    ForEach(tuiles) { r in NavigationLink { RubriqueView(rubrique: r) } label: { tuile(r.symbole, r.rawValue.replacingOccurrences(of: " et lieux", with: "").replacingOccurrences(of: " deux périodes", with: "")) }.buttonStyle(.plain) }
-                    NavigationLink { ToutesRubriquesView() } label: { tuile("square.grid.2x2", "Toutes · 16") }.buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
@@ -101,22 +84,24 @@ struct AnalysesView: View {
 
     private func chiffre(_ t: String, _ v: String, _ s: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(t).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            Text(t).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             Text(v).font(.headline).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-            Text(s).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+            Text(s).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .surface(in: .rect(cornerRadius: 18))
+        .surface(in: .rect(cornerRadius: 16))
     }
 
+    /// Une rubrique : icône, nom, chevron, sur une ligne de 56 pt (facile à toucher).
     private func tuile(_ symbole: String, _ nom: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: symbole).font(.title3).foregroundStyle(.secondary)
+        HStack(spacing: 10) {
+            Image(systemName: symbole).foregroundStyle(.secondary).frame(width: 24)
+            Text(nom).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
             Spacer(minLength: 0)
-            Text(nom).font(.footnote.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
+            Chevron()
         }
-        .padding(12).frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
-        .surface(in: .rect(cornerRadius: 20)).contentShape(.rect(cornerRadius: 20))
+        .padding(.horizontal, 12).frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .surface(in: .rect(cornerRadius: 16)).contentShape(.rect(cornerRadius: 16))
     }
 }
 
@@ -139,7 +124,7 @@ struct ToutesRubriquesView: View {
                                         .font(.caption.weight(.semibold)).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
                                 }
                                 .padding(8).frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .surface(in: .rect(cornerRadius: 20)).contentShape(.rect(cornerRadius: 20))
+                                .surface(in: .rect(cornerRadius: 24)).contentShape(.rect(cornerRadius: 24))
                             }
                             .buttonStyle(.plain)
                         }

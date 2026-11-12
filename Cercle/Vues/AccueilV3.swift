@@ -1,40 +1,48 @@
 import SwiftUI
 
-// MARK: - Briques du design v3 (verre liquide, sans défilement)
+// MARK: - Briques du design v3 (surfaces sombres, verre pour les commandes, sans défilement)
 
-/// Carte en verre qui prend toute la place qu'on lui donne (le contenu est centré verticalement).
+/// Carte qui prend toute la place qu'on lui donne (le contenu est centré verticalement).
 struct CarteV3<Contenu: View>: View {
     var espacement: CGFloat = 8
     @ViewBuilder let contenu: Contenu
     var body: some View {
         VStack(alignment: .leading, spacing: espacement) { contenu }
-            .padding(18)
+            .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .surface(in: .rect(cornerRadius: 26))
-            .contentShape(.rect(cornerRadius: 26))
+            .surface(in: .rect(cornerRadius: 24))
+            .contentShape(.rect(cornerRadius: 24))
     }
 }
 
-/// Anneau de progression (part de 0 à 1 et plus).
+/// Anneau de progression (part de 0 à 1 et plus). Il ne s'anime que lorsque la valeur change :
+/// revenir sur l'écran ne rejoue rien.
 struct Anneau: View {
     let part: Double
     let couleur: Color
     var epaisseur: CGFloat = 6
-    @State private var vu = false
     @Environment(\.accessibilityReduceMotion) private var reduire
     var body: some View {
         ZStack {
             Circle().stroke(.white.opacity(0.1), lineWidth: epaisseur)
-            Circle().trim(from: 0, to: vu ? min(max(part, 0), 1) : 0)
+            Circle().trim(from: 0, to: min(max(part, 0), 1))
                 .stroke(couleur, style: StrokeStyle(lineWidth: epaisseur, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
-        .onAppear { withAnimation(reduire ? nil : .smooth(duration: 0.5)) { vu = true } }   // remplissage calme, sans rebond
+        .animation(reduire ? nil : .smooth(duration: 0.3), value: part)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Petit chevron « ouvrir le détail » (une vraie icône, pas un caractère dans le texte).
+struct Chevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.secondary).accessibilityHidden(true)
     }
 }
 
 extension Color {
-    // Couleurs des familles du thème choisi (Le Cercle › Thème)
+    // Couleurs des familles (identité unique de l'app)
     static var besoins: Color { ThemeCouleurs.actuel.besoins }
     static var envies: Color { ThemeCouleurs.actuel.envies }
     static var epargneV3: Color { ThemeCouleurs.actuel.epargne }
@@ -73,15 +81,9 @@ struct AccueilView: View {
     @Environment(Magasin.self) private var magasin
     @AppStorage("modePeriode") private var modeBrut = Calc.Mode.paie.rawValue
     @AppStorage("masque") private var masque = false
-    @AppStorage("ordreAccueil") private var ordreBrut = "reste,regle,abos"
     @State private var page: Page?
-    enum Page: Hashable { case regle, abos, reste }
-
-    private var ordre: [String] {
-        let l = ordreBrut.split(separator: ",").map(String.init).filter { ["reste", "regle", "abos"].contains($0) }
-        return l.count == 3 ? l : ["reste", "regle", "abos"]
-    }
-    private var salutation: String { let h = Calendar.current.component(.hour, from: Date()); return h >= 18 || h < 5 ? "Bonsoir" : "Bonjour" }
+    @Namespace private var zoom
+    enum Page: Hashable { case regle, abos, reste, reglages }
 
     var body: some View {
         let t = magasin.tableau(), r = ResumeV3(t: t)
@@ -91,143 +93,158 @@ struct AccueilView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Menu {
                             ForEach(Calc.Mode.allCases) { m in Button(m.rawValue) { modeBrut = m.rawValue } }
-                        } label: { HStack(spacing: 4) { Text(t.per.libelle); Image(systemName: "chevron.down").font(.caption2) } }
+                        } label: {
+                            HStack(spacing: 4) { Text(t.per.libelle); Image(systemName: "chevron.down").font(.caption) }
+                                .frame(minHeight: 30).contentShape(.rect)
+                        }
                         .font(.subheadline).foregroundStyle(.secondary)
-                        Text(salutation).font(.largeTitle.bold())
+                        Text("Résumé").font(.largeTitle.bold())
                     }
                     Spacer()
-                    Button { masque.toggle() } label: { Image(systemName: masque ? "eye.slash" : "eye").frame(width: 44, height: 44).contentShape(.rect) }
-                        .accessibilityLabel(masque ? "Afficher les montants" : "Masquer les montants")
-                        .buttonStyle(.plain).verre(.clear.interactive(), in: .circle)
+                    // Les deux commandes de l'écran, dans un même groupe de verre
+                    GlassEffectContainer(spacing: 8) {
+                        HStack(spacing: 8) {
+                            Button { masque.toggle() } label: { Image(systemName: masque ? "eye.slash" : "eye").frame(width: 44, height: 44).contentShape(.circle) }
+                                .accessibilityLabel(masque ? "Afficher les montants" : "Masquer les montants")
+                                .buttonStyle(.plain).verre(.regular.interactive(), in: .circle)
+                            Button { page = .reglages } label: { Image(systemName: "gearshape").frame(width: 44, height: 44).contentShape(.circle) }
+                                .accessibilityLabel("Réglages")
+                                .buttonStyle(.plain).verre(.regular.interactive(), in: .circle)
+                                .matchedTransitionSource(id: Page.reglages, in: zoom)
+                        }
+                    }
                 }
+                BandeauEtat()
                 if magasin.etat == .demo { Text("Mode démo : données inventées").badge(.alerte) }
-                ForEach(ordre, id: \.self) { k in
-                    carte(k, t, r)
-                        .draggable(k)   // appui prolongé, puis glisser pour changer l'ordre
-                        .dropDestination(for: String.self) { items, _ in deplacer(items.first, vers: k) }
-                }
+                carteReste(r).matchedTransitionSource(id: Page.reste, in: zoom)
+                carteRegle(r).matchedTransitionSource(id: Page.regle, in: zoom)
+                carteAbonnements.matchedTransitionSource(id: Page.abos, in: zoom)
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
             .background(FondView())
             .toolbar(.hidden, for: .navigationBar)
+            .sensoryFeedback(.selection, trigger: masque)
             .navigationDestination(item: $page) { p in
-                switch p {
-                case .regle: RegleBullesView()
-                case .abos: AbonnementsView()
-                case .reste: ResteDetailView()
+                Group {
+                    switch p {
+                    case .regle: RegleBullesView()
+                    case .abos: AbonnementsView()
+                    case .reste: ResteDetailView()
+                    case .reglages: MonEspaceView()
+                    }
                 }
+                // La carte touchée s'agrandit jusqu'à devenir la page de détail
+                .navigationTransition(.zoom(sourceID: p, in: zoom))
             }
-            .refreshable { await magasin.rafraichir() }
         }
     }
 
-    private func deplacer(_ id: String?, vers cible: String) -> Bool {
-        guard let id, id != cible, var l = Optional(ordre), let i = l.firstIndex(of: id), let j = l.firstIndex(of: cible) else { return false }
-        l.remove(at: i); l.insert(id, at: j)
-        withAnimation(.spring) { ordreBrut = l.joined(separator: ",") }
-        return true
+    /// « Il te reste » : le solde réel, puis ce qui est vraiment dépensable une fois les prélèvements passés.
+    private func carteReste(_ r: ResumeV3) -> some View {
+        let rr = magasin.resteReel
+        return Button { page = .reste } label: {
+            CarteV3(espacement: 10) {
+                HStack { Text("Il te reste jusqu'au \(J.court(rr.fin))"); Spacer(); Chevron() }
+                    .font(.subheadline).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    ChiffreAnime(valeur: rr.solde, taille: 48, decimales: 2)
+                        .foregroundStyle(rr.solde < 0 ? Color.negatif : .primary)
+                    Text("sur ton compte").foregroundStyle(.secondary)
+                }
+                Jauge(part: rr.part, couleur: .primary, repere: r.repere, hauteur: 10)
+                HStack {
+                    Text("Après tes prélèvements à venir").foregroundStyle(.secondary)
+                    Spacer()
+                    Text(Fmt.eur(rr.solde - rr.totalAVenir, 0)).monospacedDigit().fontWeight(.semibold)
+                }
+                .font(.footnote)
+                HStack {
+                    Text(rr.parJour > 0 ? "max \(Fmt.eur(rr.parJour, 0)) par jour · \(rr.restants) jours" : "0 € par jour · \(rr.restants) jours")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    // La prévision ne s'affiche ici que si elle annonce un découvert ; sinon elle est dans le détail
+                    if rr.finMois < 0 { Text("≈ \(Fmt.eur(rr.finMois, 0)) le \(J.court(rr.fin))").foregroundStyle(Color.alerte).fontWeight(.semibold) }
+                }
+                .font(.footnote)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Ouvre le détail de ton solde")
     }
 
-    @ViewBuilder private func carte(_ k: String, _ t: Tableau, _ r: ResumeV3) -> some View {
-        switch k {
-        case "reste":
-            let rr = magasin.resteReel
-            Button { page = .reste } label: {
-                CarteV3(espacement: 10) {
-                    Text("Il te reste jusqu'au \(J.court(rr.fin)) ›").font(.subheadline).foregroundStyle(.secondary)
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        ChiffreAnime(valeur: rr.solde, taille: 48, decimales: 2)
-                            .foregroundStyle(rr.solde < 0 ? Color.negatif : .primary)
-                        Text("sur ton compte").foregroundStyle(.secondary)
+    private func carteRegle(_ r: ResumeV3) -> some View {
+        Button { page = .regle } label: {
+            CarteV3 {
+                HStack { Text("Règle 50-30-20").font(.headline); Spacer(); Chevron() }
+                HStack {
+                    ForEach(r.familles) { f in
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Anneau(part: f.total > 0 ? f.dep / f.total : 0, couleur: f.couleur)
+                                Text(Fmt.pct(f.total > 0 ? f.dep / f.total * 100 : 0)).font(.subheadline.bold()).monospacedDigit()
+                            }
+                            .frame(width: 72, height: 72)
+                            Text(f.nom).font(.caption).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
                     }
-                    Jauge(part: rr.part, couleur: .primary, repere: r.repere, hauteur: 10)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Ouvre le détail de la règle")
+    }
+
+    /// Les trois prochains abonnements à tomber.
+    private var carteAbonnements: some View {
+        let l = magasin.prelevements.filter(\.estAbonnement), total = l.reduce(0) { $0 + $1.montant }
+        let j = J.comp(J.aujourdhui).j
+        let prochains = l.sorted { ($0.jour - j + 31) % 31 < ($1.jour - j + 31) % 31 }.prefix(3)
+        return Button { page = .abos } label: {
+            CarteV3(espacement: 4) {
+                HStack {
+                    Text("Abonnements").font(.headline)
+                    Spacer()
+                    Text("\(Fmt.eur(total)) par mois").font(.footnote).foregroundStyle(.secondary)
+                    Chevron()
+                }
+                if prochains.isEmpty { Text("Aucun abonnement détecté").foregroundStyle(.secondary) }
+                ForEach(Array(prochains)) { p in
+                    let dans = (p.jour - j + 31) % 31
                     HStack {
-                        Text(rr.finMois < 0 ? "À ce rythme : ≈ \(Fmt.eur(rr.finMois, 0)) le \(J.court(rr.fin))" : "À ce rythme : ≈ \(Fmt.eur(rr.finMois, 0)) de côté le \(J.court(rr.fin))")
-                            .foregroundStyle(rr.finMois < 0 ? Color.alerte : .primary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(p.nom).lineLimit(1)
+                            Text("\(dans == 0 ? "aujourd'hui" : dans == 1 ? "demain" : "dans \(dans) jours") · le \(p.jour)").font(.caption).foregroundStyle(.secondary)
+                        }
                         Spacer()
-                        Text(rr.parJour > 0 ? "max \(Fmt.eur(rr.parJour, 0)) / jour" : "0 € / jour").foregroundStyle(.secondary)
+                        Text(Fmt.eur(-p.montant, signe: true)).monospacedDigit().fontWeight(.semibold)
                     }
-                    .font(.footnote.weight(.medium))
+                    .padding(.vertical, 4)
                 }
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("Ouvre le détail de ton solde")
-        case "regle":
-            Button { page = .regle } label: {
-                CarteV3 {
-                    HStack { Text("Règle 50-30-20").font(.headline); Spacer(); Text("Voir le détail ›").font(.footnote).foregroundStyle(.secondary) }
-                    HStack {
-                        ForEach(r.familles) { f in
-                            VStack(spacing: 6) {
-                                ZStack {
-                                    Anneau(part: f.total > 0 ? f.dep / f.total : 0, couleur: f.couleur)
-                                    Text(Fmt.pct(f.total > 0 ? f.dep / f.total * 100 : 0)).font(.subheadline.bold()).monospacedDigit()
-                                }
-                                .frame(width: 72, height: 72)
-                                Text(f.nom).font(.caption).foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-        default:
-            let l = Prelevements.liste(t.ops).filter(\.estAbonnement), total = l.reduce(0) { $0 + $1.montant }
-            let j = J.comp(J.aujourdhui).j
-            let prochains = l.sorted { ($0.jour - j + 31) % 31 < ($1.jour - j + 31) % 31 }.prefix(3)
-            Button { page = .abos } label: {
-                CarteV3(espacement: 4) {
-                    HStack { Text("Abonnements").font(.headline); Spacer(); Text("\(Fmt.eur(total)) / mois ›").font(.footnote).foregroundStyle(.secondary) }
-                    if prochains.isEmpty { Text("Aucun abonnement détecté").foregroundStyle(.secondary) }
-                    ForEach(Array(prochains)) { p in
-                        let dans = (p.jour - j + 31) % 31
-                        HStack {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(p.nom).lineLimit(1)
-                                Text("\(dans == 0 ? "aujourd'hui" : dans == 1 ? "demain" : "dans \(dans) jours") · le \(p.jour)").font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(Fmt.eur(-p.montant, signe: true)).monospacedDigit().fontWeight(.semibold)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
         }
+        .buttonStyle(.plain)
+        .accessibilityHint("Ouvre le calendrier des abonnements")
     }
 }
 
-// MARK: - 50-30-20 : trois bulles
+// MARK: - 50-30-20 : trois lignes claires (dépensé, total, marge)
 
 struct RegleBullesView: View {
     @Environment(Magasin.self) private var magasin
     @State private var choisie: ResumeV3.Famille?
 
     var body: some View {
-        let t = magasin.tableau(), r = ResumeV3(t: t), f = r.familles
-        VStack(alignment: .leading, spacing: 8) {
+        let t = magasin.tableau(), r = ResumeV3(t: t)
+        VStack(alignment: .leading, spacing: 12) {
             Text("Ce que tu as déjà dépensé, sur ce que la règle te laisse ce mois-ci.").font(.subheadline).foregroundStyle(.secondary)
-            GeometryReader { g in
-                let p = positions(g.size)
-                ZStack {
-                    ForEach(Array(f.enumerated()), id: \.element.id) { i, fa in
-                        if i < p.count {
-                            bulle(fa, rang: i).frame(width: p[i].taille, height: p[i].taille).position(p[i].centre)
-                                .scaleEffect(choisie == nil ? 1 : choisie?.id == fa.id ? 1.07 : 0.92)
-                                .opacity(choisie == nil || choisie?.id == fa.id ? 1 : 0.45)
-                                .blur(radius: choisie == nil || choisie?.id == fa.id ? 0 : 1.5)
-                                .animation(.smooth(duration: 0.3), value: choisie)
-                        }
-                    }
-                }
-            }
+            ForEach(r.familles) { f in ligne(f) }
             Text("Besoins, envies : \(Fmt.eur(t.b.ref, 0)) · Épargne : 20 % de \(Fmt.eur(t.b.rev, 0))").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(FondView())
         .navigationTitle("50-30-20")
+        .sensoryFeedback(.selection, trigger: choisie)
         .sheet(item: $choisie) { fa in
             NavigationStack {
                 List {
@@ -240,88 +257,45 @@ struct RegleBullesView: View {
         }
     }
 
-    /// Trois bulles aussi grandes que possible, sans se toucher.
-    private func positions(_ s: CGSize) -> [(centre: CGPoint, taille: CGFloat)] {
-        let W = s.width, H = s.height
-        var k: CGFloat = 1
-        while k > 0.4 {
-            let s1 = min(W * 0.66, H * 0.52) * k, s2 = s1 * 0.86, s3 = s1 * 0.8, r1 = s1 / 2, r2 = s2 / 2, r3 = s3 / 2
-            let c1 = CGPoint(x: r1, y: r1), dx = (W - r2) - c1.x
-            let c2 = CGPoint(x: W - r2, y: max(H * 0.48, c1.y + sqrt(max(0, pow(r1 + r2 + 10, 2) - dx * dx))))
-            let c3 = CGPoint(x: max(r3, W * 0.36 - r3 * 0.2), y: H - r3)
-            let d = { (a: CGPoint, b: CGPoint) in hypot(a.x - b.x, a.y - b.y) }
-            if c2.y + r2 <= H && d(c1, c3) >= r1 + r3 + 10 && d(c2, c3) >= r2 + r3 + 10 && c3.x + r3 <= W {
-                return [(c1, s1), (c2, s2), (c3, s3)]
-            }
-            k -= 0.02
-        }
-        return []
-    }
-
-    private func bulle(_ f: ResumeV3.Famille, rang: Int) -> some View {
+    /// Une famille : son nom, ce qui est dépensé sur ce qui est permis, la jauge et l'écart en clair.
+    private func ligne(_ f: ResumeV3.Famille) -> some View {
         let ecart = f.dep - f.total
         let etat: (String, Color) = f.id == "epa" ? (ecart >= 0 ? ("Objectif atteint", .positif) : ("\(Fmt.eur(-ecart, 0)) à mettre", .alerte))
             : (ecart > 0 ? ("\(Fmt.eur(ecart, 0)) de trop", .alerte) : ("\(Fmt.eur(-ecart, 0)) de marge", .positif))
         return Button { choisie = f } label: {
-            GeometryReader { g in
-                let t = g.size.width
-                ZStack {
-                    Color.clear.verre(.clear.tint(f.couleur.opacity(0.12)).interactive(), in: .circle)
-                    // Reflet en haut à gauche et lueur de la famille en bas à droite : l'effet sphère
-                    Circle().fill(RadialGradient(colors: [.white.opacity(0.32), .white.opacity(0.06), .clear], center: UnitPoint(x: 0.3, y: 0.22), startRadius: 0, endRadius: t * 0.42))
-                    Circle().fill(RadialGradient(colors: [f.couleur.opacity(0.35), .clear], center: UnitPoint(x: 0.72, y: 0.86), startRadius: 0, endRadius: t * 0.5))
-                    Circle().strokeBorder(LinearGradient(colors: [.white.opacity(0.8), .white.opacity(0.08), f.couleur.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
-                    Anneau(part: f.total > 0 ? f.dep / f.total : 0, couleur: f.couleur, epaisseur: 4)
-                    VStack(spacing: 3) {
-                        HStack(spacing: 5) { Circle().fill(f.couleur).frame(width: 8, height: 8); Text("\(f.nom) · \(Int(f.cible)) %") }
-                            .font(.system(size: max(12, t * 0.062))).foregroundStyle(.secondary)
-                        Text(Fmt.eur(f.dep, 0)).font(.system(size: t * 0.16, weight: .bold, design: .rounded)).monospacedDigit()
-                        Text("sur \(Fmt.eur(f.total, 0))").font(.footnote).foregroundStyle(.secondary)
-                        Text(etat.0).font(.caption.weight(.semibold)).foregroundStyle(etat.1)
-                            .padding(.horizontal, 10).padding(.vertical, 3).background(.black.opacity(0.45), in: Capsule())
-                    }
-                    .shadow(color: .black.opacity(0.55), radius: 6)
+            CarteV3(espacement: 10) {
+                HStack(spacing: 8) {
+                    Circle().fill(f.couleur).frame(width: 10, height: 10)
+                    Text("\(f.nom) · \(Int(f.cible)) %").font(.headline)
+                    Spacer()
+                    Chevron()
                 }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(Fmt.eur(f.dep, 0)).grandChiffre(34)
+                    Text("sur \(Fmt.eur(f.total, 0))").foregroundStyle(.secondary)
+                    Spacer()
+                    Text(etat.0).font(.footnote.weight(.semibold)).foregroundStyle(etat.1)
+                }
+                Jauge(part: f.total > 0 ? f.dep / f.total * 100 : 0, couleur: f.couleur, hauteur: 10)
             }
         }
         .buttonStyle(.plain)
-        .contentShape(Circle())
-        .shadow(color: f.couleur.opacity(0.25), radius: 22)
-        .modifier(Flotte(rang: rang))
-        .accessibilityLabel("\(f.nom) : \(Fmt.eur(f.dep, 0)) sur \(Fmt.eur(f.total, 0))")
+        .accessibilityLabel("\(f.nom) : \(Fmt.eur(f.dep, 0)) sur \(Fmt.eur(f.total, 0)), \(etat.0)")
+        .accessibilityHint("Affiche le détail par catégorie")
     }
 }
 
-/// Les bulles flottent doucement, chacune à son rythme (rien si « Réduire les animations »).
-private struct Flotte: ViewModifier {
-    let rang: Int
-    @State private var haut = false
-    @State private var vu = false
-    @Environment(\.accessibilityReduceMotion) private var reduire
-    func body(content: Content) -> some View {
-        content
-            .offset(y: reduire ? 0 : (haut ? -3 : 3))
-            .scaleEffect(vu ? 1 : 0.9).opacity(vu ? 1 : 0)
-            .onAppear {
-                withAnimation(reduire ? nil : .smooth(duration: 0.45).delay(Double(rang) * 0.05)) { vu = true }
-                guard !reduire else { return }
-                withAnimation(.easeInOut(duration: 6 + Double(rang)).repeatForever(autoreverses: true)) { haut = true }
-            }
-    }
-}
-
-/// Grand chiffre qui défile de 0 jusqu'à sa valeur à l'ouverture (500 ms ; directement la valeur si « Réduire les animations »).
+/// Grand chiffre : il s'affiche tout de suite à sa vraie valeur (jamais « 0 € » à l'ouverture d'un écran)
+/// et glisse en 300 ms seulement quand la valeur change (rien si « Réduire les animations »).
 struct ChiffreAnime: View {
     let valeur: Double
     var taille: CGFloat = 54
     var decimales = 0
-    @State private var affiche: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduire
     var body: some View {
-        Text(Fmt.eur(affiche, decimales)).grandChiffre(taille)
-            .contentTransition(.numericText(value: affiche))
-            .onAppear { if reduire { affiche = valeur } else { withAnimation(.smooth(duration: 0.5)) { affiche = valeur } } }
-            .onChange(of: valeur) { _, v in withAnimation(reduire ? nil : .smooth(duration: 0.3)) { affiche = v } }
+        Text(Fmt.eur(valeur, decimales)).grandChiffre(taille)
+            .contentTransition(.numericText(value: valeur))
+            .animation(reduire ? nil : .smooth(duration: 0.3), value: valeur)
             .accessibilityLabel(Fmt.eur(valeur, decimales))
     }
 }
@@ -335,7 +309,7 @@ struct AbonnementsView: View {
     struct JourChoisi: Identifiable { let id: Int }
 
     var body: some View {
-        let toutes = Prelevements.liste(magasin.toutes), l = toutes.filter { tout || $0.estAbonnement }
+        let toutes = magasin.prelevements, l = toutes.filter { tout || $0.estAbonnement }
         let total = l.reduce(0) { $0 + $1.montant }
         let auj = J.aujourdhui, c = J.comp(auj), debut = J.debutDuMois(auj)
         let nbJours = J.comp(J.finDuMois(auj)).j, decalage = J.jourSemaine(J.iso(debut))
@@ -358,7 +332,7 @@ struct AbonnementsView: View {
                     Spacer()
                     Picker("", selection: $tout) { Text("Abonnements").tag(false); Text("Tout").tag(true) }.pickerStyle(.segmented).frame(width: 190)
                 }
-                HStack { ForEach(["L", "M", "M", "J", "V", "S", "D"].indices, id: \.self) { i in Text(["L", "M", "M", "J", "V", "S", "D"][i]).font(.caption2).foregroundStyle(.tertiary).frame(maxWidth: .infinity) } }
+                HStack { ForEach(["L", "M", "M", "J", "V", "S", "D"].indices, id: \.self) { i in Text(["L", "M", "M", "J", "V", "S", "D"][i]).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity) } }
                 ForEach(semaines.indices, id: \.self) { s in
                     HStack(spacing: 4) {
                         ForEach(0..<7, id: \.self) { i in
@@ -370,7 +344,7 @@ struct AbonnementsView: View {
             }
             .padding(12)
             .frame(maxHeight: .infinity)
-            .surface(in: .rect(cornerRadius: 26))
+            .surface(in: .rect(cornerRadius: 24))
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(FondView())
@@ -402,7 +376,7 @@ struct AbonnementsView: View {
                 Text("\(j)").font(.callout.weight(j == auj ? .bold : .regular)).foregroundStyle(j < auj ? .secondary : .primary)
                     .overlay { if j == auj { Circle().stroke(.primary, lineWidth: 1.5).frame(width: 28, height: 28) } }
                 if !l.isEmpty {
-                    Text(Fmt.nombre(somme)).font(.system(size: 10, weight: .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                    Text(Fmt.nombre(somme)).font(.caption.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background((l.allSatisfy { !$0.estAbonnement } ? Color.besoins : .white).opacity(0.18), in: .rect(cornerRadius: 6))
                 }

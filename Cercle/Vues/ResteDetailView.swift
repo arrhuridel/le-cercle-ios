@@ -22,8 +22,8 @@ struct ResteDetailView: View {
                     }
                     .font(.footnote.weight(.medium))
                 }
-                .padding(18).frame(maxWidth: .infinity)
-                .surface(in: .rect(cornerRadius: 26))
+                .padding(16).frame(maxWidth: .infinity)
+                .surface(in: .rect(cornerRadius: 24))
 
                 carte("Avant la paie", "déjà sur le compte") { ligne("=", .primary, "Solde la veille de la paie", nil, Fmt.eur(r.avant)) }
                 carte("Reçu ce mois", "salaire + CAF") {
@@ -92,8 +92,8 @@ struct ResteDetailView: View {
                     }
                 }
                 Text("Ici le loyer compte en entier, parce que c'est ce qui sort de ton compte, et le remboursement de ton coloc apparaît dans les autres entrées. Dans la règle 50-30-20, seule ta moitié du loyer compte. Objectif d'épargne du mois : \(Fmt.eur(r.objectifEpargne, 0)) (20 % de tous tes revenus).")
-                    .font(.footnote).foregroundStyle(.secondary).padding(14)
-                    .surface(in: .rect(cornerRadius: 22))
+                    .font(.footnote).foregroundStyle(.secondary).padding(16)
+                    .surface(in: .rect(cornerRadius: 24))
             }
             .padding(.horizontal, 16).padding(.bottom, 24)
         }

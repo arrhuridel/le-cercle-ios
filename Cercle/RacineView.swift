@@ -11,7 +11,6 @@ struct RacineView: View {
     @Environment(Magasin.self) private var magasin
     @Environment(\.scenePhase) private var phase
     @AppStorage("faceId") private var faceId = false
-    @AppStorage("theme") private var theme = "sombre"
     @State private var onglet: Onglet = .resume
     @State private var saisieOuverte = false
     @State private var verrouille = false
@@ -23,10 +22,13 @@ struct RacineView: View {
             switch magasin.etat {
             case .demarrage: ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity).background(FondView())
             case .deconnecte: ConnexionView()
-            case .demo, .connecte: onglets
+            case .demo, .connecte:
+                // Première connexion : rien à montrer tant que la base n'a pas répondu (jamais d'écran à 0 €)
+                if magasin.etat == .connecte && magasin.profil == nil && magasin.chargement { premierChargement } else { onglets }
             }
         }
-        .preferredColorScheme(theme == "clair" ? .light : theme == "auto" ? nil : .dark)
+        // Le fond de l'app est toujours sombre : le mode clair rendrait le texte illisible
+        .preferredColorScheme(.dark)
         // Liens des widgets : lecercle://ajouter ouvre la saisie, lecercle://reste revient au Résumé
         .onOpenURL { url in
             switch url.host {
@@ -46,7 +48,8 @@ struct RacineView: View {
             // La fenêtre Face ID rend l'app « inactive » puis « active » : sans ce drapeau, un refus relancerait Face ID en boucle
             if p == .active && verrouille && revenuDuFond { revenuDuFond = false; deverrouiller() }
             // En revenant dans l'app : on relit la base (une dépense ajoutée par le raccourci ou sur le site apparaît tout de suite)
-            if p == .active && magasin.etat == .connecte { Task { await magasin.rafraichir() } }
+            // (seulement si la dernière lecture a plus d'une minute : pas de rechargement à chaque aller-retour)
+            if p == .active && magasin.etat == .connecte { Task { await magasin.rafraichirSiAncien() } }
         }
     }
 
@@ -54,33 +57,47 @@ struct RacineView: View {
         TabView(selection: $onglet) {
             Tab("Résumé", systemImage: "chart.pie", value: Onglet.resume) { AccueilView() }
             Tab("Analyses", systemImage: "chart.bar", value: Onglet.analyses) { AnalysesView() }
-            Tab("Activité", systemImage: "list.bullet", value: Onglet.activite) { ComptesView() }
+            Tab("Comptes", systemImage: "building.columns", value: Onglet.activite) { ComptesView() }
             Tab("Cercle", systemImage: "person.2", value: Onglet.cercle) { CercleView() }
             // Le rôle « search » place cet onglet à part, dans un bouton rond en verre : c'est notre « + ».
-            // Il n'affiche rien : on revient aussitôt à l'onglet précédent et on ouvre la feuille de saisie.
-            Tab("Ajouter", systemImage: "plus", value: Onglet.ajouter, role: .search) { Color.clear }
+            // On revient aussitôt à l'onglet précédent et on ouvre la feuille de saisie ; le même fond évite un éclair vide.
+            Tab("Ajouter", systemImage: "plus", value: Onglet.ajouter, role: .search) { FondView() }
         }
         .tint(.primary)   // sélection neutre, jamais bleue
         .tabBarMinimizeBehavior(.onScrollDown)
         .onChange(of: onglet) { ancien, nouveau in
             if nouveau == .ajouter { onglet = ancien; saisieOuverte = true }
         }
-        .sensoryFeedback(.selection, trigger: onglet)
+        // Une seule vibration par changement d'onglet (l'aller-retour du « + » n'en déclenche pas deux)
+        .sensoryFeedback(trigger: onglet) { ancien, nouveau in
+            ancien == .ajouter || nouveau == .ajouter ? nil : .selection
+        }
+        .sensoryFeedback(.impact(weight: .light), trigger: saisieOuverte) { _, ouverte in ouverte }
         .sheet(isPresented: $saisieOuverte) { SaisieView() }
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+    }
+
+    /// Attente de la première lecture de la base, juste après la connexion.
+    private var premierChargement: some View {
+        VStack(spacing: 14) {
+            ProgressView()
+            Text("Chargement de tes comptes…").font(.subheadline).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(FondView())
     }
 
     /// Écran de verrouillage : flou, Face ID (ou le code de l'iPhone en secours).
     private var verrou: some View {
         VStack(spacing: 18) {
-            Image(systemName: "faceid").font(.system(size: 44, weight: .light)).frame(width: 86, height: 86).verre(.clear, in: .rect(cornerRadius: 26))
+            Image(systemName: "faceid").font(.system(size: 44, weight: .light)).frame(width: 86, height: 86).verre(.regular, in: .rect(cornerRadius: 24))
             Text("Le Cercle est verrouillé").font(.title2.weight(.semibold))
             if verrouille {
                 Button { deverrouiller() } label: {
                     Text("Déverrouiller").font(.headline).padding(.horizontal, 40).padding(.vertical, 14).contentShape(.capsule)
                 }
                 .buttonStyle(.plain)
-                .verre(.clear.interactive(), in: .capsule)
+                .verre(.regular.interactive(), in: .capsule)
                 .disabled(authEnCours)
             }
         }
@@ -113,14 +130,14 @@ struct ConnexionView: View {
     var body: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "chart.pie").font(.system(size: 44, weight: .light)).frame(width: 92, height: 92).verre(.clear, in: .rect(cornerRadius: 26))
+            Image(systemName: "chart.pie").font(.system(size: 44, weight: .light)).frame(width: 92, height: 92).verre(.regular, in: .rect(cornerRadius: 24))
             Text("Le Cercle").font(.largeTitle.weight(.bold))
             Text("Ton budget, tes analyses et tes comptes partagés.").foregroundStyle(.secondary).multilineTextAlignment(.center)
             VStack(spacing: 10) {
                 TextField("E-mail", text: $email).textContentType(.emailAddress).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .padding(14).verre(.clear, in: .rect(cornerRadius: 16))
+                    .padding(16).verre(.regular, in: .rect(cornerRadius: 16))
                 SecureField("Mot de passe", text: $motDePasse).textContentType(.password)
-                    .padding(14).verre(.clear, in: .rect(cornerRadius: 16))
+                    .padding(16).verre(.regular, in: .rect(cornerRadius: 16))
             }
             .padding(.top, 10)
             if let e = magasin.erreur { Text(e).font(.footnote).foregroundStyle(Color.alerte).multilineTextAlignment(.center) }
@@ -136,7 +153,7 @@ struct ConnexionView: View {
                     .frame(maxWidth: .infinity).padding(.vertical, 14).contentShape(.capsule)   // tout le bouton réagit
             }
             .buttonStyle(.plain)
-            .verre(.clear.interactive(), in: .capsule)
+            .verre(.regular.interactive(), in: .capsule)
             .disabled(email.isEmpty || motDePasse.isEmpty || !magasin.configure || magasin.chargement)
             Spacer()
             Button("Essayer avec des données d'exemple") { magasin.ouvrirDemo() }.font(.subheadline).tint(.secondary)

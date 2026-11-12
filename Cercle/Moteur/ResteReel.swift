@@ -80,9 +80,12 @@ struct ResteReel {
 }
 
 extension Magasin {
-    /// Calculé à la demande (rapide : seulement le compte courant). Toujours sur le cycle de paie.
+    /// Toujours sur le cycle de paie. Gardé en mémoire tant que les données ne changent pas
+    /// (il est lu par le Résumé à chaque affichage).
     var resteReel: ResteReel {
-        let t = tableau(mode: .paie)
-        return ResteReel(ops: ops, periode: t.per, revenusDuMois: t.b.rev, soldeInitial: soldesInitiaux[""] ?? 0)
+        memo("resteReel") {
+            let t = tableau(mode: .paie)
+            return ResteReel(ops: ops, periode: t.per, revenusDuMois: t.b.rev, soldeInitial: soldesInitiaux[""] ?? 0)
+        }
     }
 }

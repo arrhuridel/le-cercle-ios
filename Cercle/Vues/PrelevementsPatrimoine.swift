@@ -32,7 +32,7 @@ struct PrelevementsView: View {
                 Text("Un point par prélèvement attendu, vert pour un revenu").font(.footnote).foregroundStyle(.secondary)
                 let lundi = J.plus(J.aujourdhui, jours: -J.jourSemaine(J.auj))
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
-                    ForEach(["L", "M", "M", "J", "V", "S", "D"].indices, id: \.self) { i in Text(["L", "M", "M", "J", "V", "S", "D"][i]).font(.caption2.weight(.semibold)).foregroundStyle(.tertiary) }
+                    ForEach(["L", "M", "M", "J", "V", "S", "D"].indices, id: \.self) { i in Text(["L", "M", "M", "J", "V", "S", "D"][i]).font(.caption.weight(.semibold)).foregroundStyle(.tertiary) }
                     ForEach(0..<35, id: \.self) { i in caseJour(J.iso(J.plus(lundi, jours: i)), ech) }
                 }
             }
