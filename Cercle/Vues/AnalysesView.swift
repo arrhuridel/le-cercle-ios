@@ -81,11 +81,11 @@ struct AnalysesView: View {
             }
             if let s = sel, !vide {
                 HStack(spacing: 14) {
-                    legende(Color.white.opacity(0.35), "Revenus", Fmt.eur(s.rev, 0))
-                    legende(Color.white, "Dépenses", Fmt.eur(s.dep, 0))
+                    legende(Self.vert, "Revenus", Fmt.eur(s.rev, 0))
+                    legende(Self.rouge, "Dépenses", Fmt.eur(s.dep, 0))
                     Spacer(minLength: 0)
                     Text(Fmt.eur(s.rev - s.dep, 0, signe: true)).font(.footnote.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(s.rev - s.dep < 0 ? Color.negatif : Color.positif)
+                        .foregroundStyle(s.rev - s.dep < 0 ? Self.rouge : Self.vert)
                 }
             }
             if vide {
@@ -95,20 +95,29 @@ struct AnalysesView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
+                // Revenus en vert au-dessus de la ligne du zéro, dépenses en rouge en dessous (demande du 12/11/2026)
                 Chart {
+                    RuleMark(y: .value("Zéro", 0)).foregroundStyle(.white.opacity(0.35)).lineStyle(StrokeStyle(lineWidth: 1))
                     ForEach(points) { p in
                         BarMark(x: .value("Période", p.libelle), y: .value("Montant", p.rev))
-                            .foregroundStyle(by: .value("Série", "Revenus")).position(by: .value("Série", "Revenus")).cornerRadius(4)
-                            .opacity(sel == nil || sel?.cle == p.cle ? 1 : 0.35)
-                        BarMark(x: .value("Période", p.libelle), y: .value("Montant", p.dep))
-                            .foregroundStyle(by: .value("Série", "Dépenses")).position(by: .value("Série", "Dépenses")).cornerRadius(4)
-                            .opacity(sel == nil || sel?.cle == p.cle ? 1 : 0.35)
+                            .foregroundStyle(Self.vert).cornerRadius(4)
+                            .opacity(opacite(p, sel))
+                        BarMark(x: .value("Période", p.libelle), y: .value("Montant", -p.dep))
+                            .foregroundStyle(Self.rouge).cornerRadius(4)
+                            .opacity(opacite(p, sel))
                     }
                 }
-                .chartForegroundStyleScale(["Revenus": Color.white.opacity(0.35), "Dépenses": Color.white])
-                .chartLegend(.hidden)
                 .chartXSelection(value: $choisi)
-                .chartYScale(domain: 0...plafond)
+                .chartYScale(domain: -plafond...plafond)
+                // Les montants de l'axe sont écrits sans signe : « 1 000 » en haut comme en bas
+                .chartYAxis {
+                    AxisMarks(values: .automatic(desiredCount: 5)) { v in
+                        AxisGridLine().foregroundStyle(.white.opacity(0.08))
+                        AxisValueLabel {
+                            if let d = v.as(Double.self) { Text(Fmt.nombre(abs(d), 0)).font(.caption).foregroundStyle(.secondary) }
+                        }
+                    }
+                }
                 .onChange(of: choisi) { _, v in if let v { garde = v } }
                 .sensoryFeedback(.selection, trigger: garde)
                 .frame(maxHeight: .infinity)
@@ -118,6 +127,16 @@ struct AnalysesView: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .surface(in: .rect(cornerRadius: 24))
+    }
+
+    /// Vert et rouge francs de l'identité de l'app (#3DD68C, #FF6B6B), plus lisibles que les teintes sourdes des textes.
+    static let vert = Color(red: 0x3D / 255, green: 0xD6 / 255, blue: 0x8C / 255)
+    static let rouge = Color(red: 0xFF / 255, green: 0x6B / 255, blue: 0x6B / 255)
+
+    /// La période touchée reste vive, les autres pâlissent.
+    private func opacite(_ p: PointAnalyse, _ sel: PointAnalyse?) -> Double {
+        guard let sel else { return 1 }
+        return sel.cle == p.cle ? 1 : 0.35
     }
 
     private func legende(_ couleur: Color, _ nom: String, _ valeur: String) -> some View {
