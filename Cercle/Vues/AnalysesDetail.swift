@@ -434,7 +434,7 @@ struct ChargesDetail: View {
                                 Text("le \(p.jour) · \(p.estAbonnement ? "abonnement" : p.sc.lowercased())").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(Fmt.eur(p.montant)).monospacedDigit().fontWeight(.semibold)
+                            Text(p.montantTexte).monospacedDigit().fontWeight(.semibold)
                         }
                         .frame(minHeight: 44)
                         .accessibilityElement(children: .combine)

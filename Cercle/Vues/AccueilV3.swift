@@ -219,7 +219,7 @@ struct AccueilView: View {
                             Text("\(dans == 0 ? "aujourd'hui" : dans == 1 ? "demain" : "dans \(dans) jours") · le \(p.jour)").font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(Fmt.eur(-p.montant, signe: true)).monospacedDigit().fontWeight(.semibold)
+                        Text(p.sortieTexte).monospacedDigit().fontWeight(.semibold)
                     }
                     .padding(.vertical, 4)
                 }
@@ -359,7 +359,7 @@ struct AbonnementsView: View {
                     Section { Text(Fmt.eur(-d.reduce(0) { $0 + $1.montant }, signe: true)).font(.largeTitle.bold()).monospacedDigit() }
                     ForEach(d) { p in
                         VStack(alignment: .leading, spacing: 3) {
-                            HStack { Text(p.nom).fontWeight(.semibold); Spacer(); Text(Fmt.eur(-p.montant, signe: true)).monospacedDigit() }
+                            HStack { Text(p.nom).fontWeight(.semibold); Spacer(); Text(p.sortieTexte).monospacedDigit() }
                             Text("\(p.sc) · \(magasin.nomCompte(p.compte)) · \(Fmt.eur(p.montant * 12, 0)) par an").font(.caption).foregroundStyle(.secondary)
                             Text(p.infos).font(.caption).foregroundStyle(.secondary)
                         }
@@ -378,7 +378,7 @@ struct AbonnementsView: View {
                 Text("\(j)").font(.callout.weight(j == auj ? .bold : .regular)).foregroundStyle(j < auj ? .secondary : .primary)
                     .overlay { if j == auj { Circle().stroke(.primary, lineWidth: 1.5).frame(width: 28, height: 28) } }
                 if !l.isEmpty {
-                    Text(Fmt.nombre(somme)).font(.caption.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                    Text((l.contains(where: \.variable) ? "≈" : "") + Fmt.nombre(somme, l.contains(where: \.variable) ? 0 : 2)).font(.caption.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background((l.allSatisfy { !$0.estAbonnement } ? Color.besoins : .white).opacity(0.18), in: .rect(cornerRadius: 6))
                 }

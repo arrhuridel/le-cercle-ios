@@ -64,11 +64,13 @@ struct ResteReel {
         // Prélèvements du compte courant encore à venir avant la fin du cycle (pas encore payés depuis la paie)
         let c = J.comp(J.aujourdhui)
         for p in Prelevements.liste(ops) where p.compte.isEmpty {
-            let deja = cycle.contains { $0.o.sc == p.sc && (abs($0.o.montant - p.montant) < 1 || abs($0.o.montant - 2 * p.montant) < 1) }
+            // Déjà passé ce mois-ci : une des opérations regroupées sous ce prélèvement tombe dans le cycle.
+            // (Avant : même montant à 1 € près, ce qui ratait les factures variables comme l'électricité.)
+            let deja = cycle.contains { p.ids.contains($0.o.id) }
             if deja { continue }
             var d = J.iso(J.faire(c.a, c.m, p.jour))
             if d <= auj { d = J.iso(J.faire(c.a, c.m + 1, p.jour)) }
-            if d <= fin { aVenir.append(Ligne(nom: p.nom, montant: p.montant, detail: d)) }
+            if d <= fin { aVenir.append(Ligne(nom: p.variable ? p.nom + " (environ)" : p.nom, montant: p.montant, detail: d)) }
         }
         aVenir = aVenir.sorted { $0.detail < $1.detail }.map { Ligne(nom: $0.nom, montant: $0.montant, detail: J.court($0.detail)) }
         let passes = max(J.ecart(debut, auj) + 1, 1)
