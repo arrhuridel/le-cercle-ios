@@ -53,7 +53,28 @@ struct RacineView: View {
         }
     }
 
+    /// La barre et ses réglages de comportement. Séparée de `barreOnglets` : une seule longue chaîne
+    /// de modificateurs était trop lourde à vérifier pour le compilateur.
     private var onglets: some View {
+        barreOnglets
+            .onChange(of: onglet) { ancien, nouveau in
+                if nouveau == .ajouter { onglet = ancien; saisieOuverte = true }
+            }
+            // Une seule vibration par changement d'onglet (l'aller-retour du « + » n'en déclenche pas deux)
+            .sensoryFeedback(trigger: onglet, vibrationOnglet)
+            .sensoryFeedback(.impact(weight: .light), trigger: saisieOuverte, condition: saisieVientDeSOuvrir)
+            .sheet(isPresented: $saisieOuverte) { SaisieView() }
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+    }
+
+    private func vibrationOnglet(_ ancien: Onglet, _ nouveau: Onglet) -> SensoryFeedback? {
+        if ancien == .ajouter || nouveau == .ajouter { return nil }
+        return .selection
+    }
+
+    private func saisieVientDeSOuvrir(_ avant: Bool, _ ouverte: Bool) -> Bool { ouverte }
+
+    private var barreOnglets: some View {
         TabView(selection: $onglet) {
             Tab("Résumé", systemImage: "chart.pie", value: Onglet.resume) { AccueilView() }
             Tab("Analyses", systemImage: "chart.bar", value: Onglet.analyses) { AnalysesView() }
@@ -65,16 +86,6 @@ struct RacineView: View {
         }
         .tint(.primary)   // sélection neutre, jamais bleue
         .tabBarMinimizeBehavior(.onScrollDown)
-        .onChange(of: onglet) { ancien, nouveau in
-            if nouveau == .ajouter { onglet = ancien; saisieOuverte = true }
-        }
-        // Une seule vibration par changement d'onglet (l'aller-retour du « + » n'en déclenche pas deux)
-        .sensoryFeedback(trigger: onglet) { ancien, nouveau in
-            ancien == .ajouter || nouveau == .ajouter ? nil : .selection
-        }
-        .sensoryFeedback(.impact(weight: .light), trigger: saisieOuverte) { _, ouverte in ouverte }
-        .sheet(isPresented: $saisieOuverte) { SaisieView() }
-        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 
     /// Attente de la première lecture de la base, juste après la connexion.

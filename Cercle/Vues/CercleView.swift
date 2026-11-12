@@ -161,7 +161,7 @@ struct MonEspaceView: View {
                         Image(systemName: "arrow.clockwise").frame(width: 34, height: 34).background(.white.opacity(0.1), in: .rect(cornerRadius: 11))
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Mettre à jour maintenant").fontWeight(.semibold)
-                            Text(magasin.etat == .demo ? "Mode démo : rien à lire" : magasin.misAJour.map { "Dernière lecture de la base à \($0.formatted(date: .omitted, time: .shortened))" } ?? "Pas encore lu depuis l'ouverture")
+                            Text(texteMiseAJour)
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -192,6 +192,13 @@ struct MonEspaceView: View {
             }
             .navigationTitle("Réglages")
             .refreshable { await magasin.rafraichir() }
+    }
+
+    /// Sous-titre du bouton « Mettre à jour maintenant ».
+    private var texteMiseAJour: String {
+        if magasin.etat == .demo { return "Mode démo : rien à lire" }
+        guard let d = magasin.misAJour else { return "Pas encore lu depuis l'ouverture" }
+        return "Dernière lecture de la base à " + d.formatted(date: .omitted, time: .shortened)
     }
 
     private func champ(_ titre: String, _ texte: Binding<String>, valeur: Double?, enregistrer: @escaping (Double) async -> Void) -> some View {

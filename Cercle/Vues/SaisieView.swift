@@ -153,6 +153,11 @@ struct SaisieView: View {
         .sensoryFeedback(.selection, trigger: sc)
     }
 
+    private var symboleOptions: String {
+        if lecture { return "hourglass" }
+        return (repeter || devise != "EUR") ? "ellipsis.circle.fill" : "ellipsis"
+    }
+
     private func choisir(_ nom: String) {
         sc = nom; choixManuel = true; indice = ""
     }
@@ -173,7 +178,7 @@ struct SaisieView: View {
             if edition == nil { Toggle("Répéter chaque mois (le \(J.comp(date).j))", isOn: $repeter) }
         } label: {
             // Le symbole plein signale qu'une option est active (répétition ou autre devise)
-            Image(systemName: lecture ? "hourglass" : repeter || devise != "EUR" ? "ellipsis.circle.fill" : "ellipsis")
+            Image(systemName: symboleOptions)
                 .frame(width: 44, height: 44).contentShape(.circle).verre(.regular.interactive(), in: .circle)
         }
         .tint(.primary)
