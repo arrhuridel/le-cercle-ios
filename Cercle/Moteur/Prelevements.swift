@@ -4,8 +4,8 @@ import Foundation
 /// - un même service noté de plusieurs façons ne compte qu'une fois : noms connus (alias), puis regroupement
 ///   automatique des noms proches (« elec », « électricité », « Électricité Alterna » = Électricité) ;
 /// - actif s'il a été payé il y a moins de 45 jours ; montant = dernier paiement (les prix changent) ;
-/// - montant variable (électricité, factures qui changent) : moyenne de ce qui a été payé chaque mois,
-///   affichée « environ » (demande du 12/11/2026) ; loyer partagé : ta moitié ;
+/// - montant variable (électricité, factures qui changent) : moyenne ramenée à un mois, depuis le début du
+///   contrat (7 août 2026 pour l'électricité), affichée « environ » (demandes du 12/11/2026) ; loyer partagé : ta moitié ;
 /// - certains abonnements ont une date de fin connue (la salle s'arrête en décembre 2026).
 enum Prelevements {
     struct Prelevement: Identifiable, Hashable {
@@ -38,6 +38,21 @@ enum Prelevements {
     ]
     /// Abonnements qui s'arrêtent à une date connue : (année, mois) du dernier paiement.
     static let fins: [String: (Int, Int)] = ["Fitness Océane": (2026, 12)]
+    /// Date de début connue d'un contrat à montant variable (l'électricité a commencé le 7 août 2026).
+    static let debuts: [String: String] = ["Électricité": "2026-08-07"]
+
+    /// Montant mensuel d'une facture variable, payée à terme échu : chaque paiement règle le mois précédent.
+    /// On divise tout ce qui a été payé par le nombre de jours couverts (du début du contrat, ou du 1er du mois
+    /// avant le premier paiement, jusqu'à la fin du mois avant le dernier paiement), puis on ramène à un mois.
+    /// Un premier mois incomplet (contrat commencé le 7) ne tire donc plus la moyenne vers le bas.
+    static func moyenneMensuelle(_ l: [Operation], debut connu: String?) -> Double {
+        guard let premier = l.first, let dernier = l.last else { return 0 }
+        let debut = connu ?? J.iso(J.debutDuMois(J.moisSuivant(J.debutDuMois(J.date(premier.date)), -1)))
+        let fin = J.iso(J.plus(J.debutDuMois(J.date(dernier.date)), jours: -1))
+        let jours = max(J.ecart(debut, fin) + 1, 1)
+        let total = l.reduce(0) { $0 + $1.montant }
+        return total / Double(jours) * Ref.joursParMois
+    }
 
     /// Mots qui ne disent rien du service : retirés avant de comparer deux noms.
     static let motsVides: Set<String> = ["paiement", "cb", "carte", "prlv", "prelevement", "sepa", "forfait", "abonnement", "abo",
@@ -132,11 +147,7 @@ enum Prelevements {
             let sc = Dictionary(grouping: l, by: \.sc).max { $0.value.count < $1.value.count }?.key ?? der.sc
             let variable = famille(mots(nom)) != nil || (sc == "Factures" && Set(l.map(\.montant)).count > 2)
             var montant = der.montant, affiche = nom
-            if variable {
-                // Moyenne de ce qui a été payé chaque mois (deux paiements le même mois comptent ensemble)
-                let parMois = Dictionary(grouping: l, by: { String($0.date.prefix(7)) }).mapValues { $0.reduce(0) { $0 + $1.montant } }
-                montant = parMois.values.reduce(0, +) / Double(max(parMois.count, 1))
-            }
+            if variable { montant = moyenneMensuelle(l, debut: debuts[nom]) }
             if sc == "Loyer" && der.loyerPartage { affiche = "Loyer (ta part)"; montant = der.montant / 2 }
             let prix = l.map { ($0.montant * 100).rounded() / 100 }
             // Ancien prix : un prix différent payé au moins deux fois (évite les frais ponctuels)
@@ -144,7 +155,7 @@ enum Prelevements {
             let avant = prix.dropLast().reversed().first { candidat in abs(candidat - dernierPrix) > 0.01 && prix.filter { $0 == candidat }.count >= 2 }
             let premier = J.comp(J.date(l[0].date))
             var infos = "depuis \(J.moisCourts[premier.m - 1]) \(premier.a) · \(l.count) paiement\(l.count > 1 ? "s" : "")"
-            if variable { infos += " · montant variable, moyenne par mois" }
+            if variable { infos += " · montant variable : moyenne" + (debuts[nom].map { " depuis le \(J.court($0))" } ?? " par mois") }
             if let avant, !variable, sc != "Loyer" { infos += " · avant \(Fmt.eur(avant))" }
             if l.count == 1 { infos += " · nouveau" }
             if let f = fins[nom] { infos += " · s'arrête en \(J.mois[f.1 - 1]) \(f.0)" }
