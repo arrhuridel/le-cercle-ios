@@ -252,6 +252,14 @@ struct LignePoste: View {
     }
 }
 
+/// Moyenne des périodes terminées : la période en cours (mois ou année pas fini) est laissée de côté,
+/// sinon elle tirerait la moyenne vers le bas. S'il n'y a qu'une période, on la garde.
+func moyenneTerminee(_ barres: [Barre]) -> Double? {
+    let l = barres.count > 1 ? Array(barres.dropLast()) : barres
+    guard !l.isEmpty else { return nil }
+    return l.reduce(0) { $0 + $1.v } / Double(l.count)
+}
+
 struct VideAnalyse: View {
     let texte: String
     var body: some View {
@@ -274,26 +282,17 @@ struct DepensesDetail: View {
     var body: some View {
         let _ = masque
         let a: AnalyseDepenses = magasin.analyseDepenses(duree)
-        let points: [PointAnalyse] = magasin.bilansAnalyse(duree)
-        let plusGros: Double = a.postes.first?.v ?? 1
+        let barres: [Barre] = magasin.bilansAnalyse(duree).map { Barre(cle: $0.cle, libelle: $0.libelle, v: $0.dep) }
         PageAnalyse(titre: "Dépenses") {
             HeroAnalyse(label: "Dépensé \(duree.texte)", valeur: Fmt.eur(a.total, 0), sous: "\(Fmt.eur(a.parMois, 0)) par mois en moyenne")
             if a.postes.isEmpty {
                 VideAnalyse(texte: "Aucune dépense sur cette durée.")
             } else {
                 CarteAnalyse(titre: duree == .tout ? "Année par année" : "Mois par mois") {
-                    Chart(points) { p in
-                        BarMark(x: .value("Période", p.libelle), y: .value("Dépenses", p.dep))
-                            .foregroundStyle(Color.white.opacity(0.85)).cornerRadius(4)
-                    }
-                    .frame(height: 170)
-                    .accessibilityLabel("Dépenses \(duree.texte) : \(Fmt.eur(a.parMois, 0)) par mois en moyenne")
+                    BarresInteractives(barres: barres, couleur: .rougeVif, repere: moyenneTerminee(barres), hausseBonne: false)
                 }
-                CarteAnalyse(titre: "Par catégorie", sous: "\(a.postes.count) catégories") {
-                    ForEach(a.postes.prefix(8)) { p in
-                        LignePoste(sc: p.sc, nom: p.sc, montant: Fmt.eur(p.v, 0), part: plusGros > 0 ? p.v / plusGros * 100 : 0,
-                                   sous: "\(Fmt.pct(p.part)) de tes dépenses")
-                    }
+                CarteAnalyse(titre: "Par catégorie", sous: "touche une part") {
+                    AnneauCategories(postes: a.postes, total: a.total)
                 }
                 if !a.grosses.isEmpty {
                     CarteAnalyse(titre: "Plus gros achats", sous: "hors charges fixes") {
@@ -315,18 +314,16 @@ struct EpargneDetail: View {
     var body: some View {
         let _ = masque
         let a: AnalyseEpargne = magasin.analyseEpargne(duree)
-        let points: [PointAnalyse] = magasin.bilansAnalyse(duree)
+        let barres: [Barre] = magasin.bilansAnalyse(duree).map { Barre(cle: $0.cle, libelle: $0.libelle, v: $0.epa, base: $0.ref) }
+        // Objectif de chaque période : 20 % du salaire et de la CAF reçus (moyenne des périodes terminées)
+        let objectifs: [Barre] = barres.map { Barre(cle: $0.cle, libelle: $0.libelle, v: $0.base * 0.2) }
         let plusGros: Double = a.supports.map { abs($0.v) }.max() ?? 1
         PageAnalyse(titre: "Épargne") {
             HeroAnalyse(label: "Mis de côté \(duree.texte)", valeur: Fmt.eur(a.total, 0),
                         sous: sousTitre(a), couleur: a.total < 0 ? .negatif : .primary)
             CarteAnalyse(titre: duree == .tout ? "Année par année" : "Mois par mois", sous: "versements moins retraits") {
-                Chart(points) { p in
-                    BarMark(x: .value("Période", p.libelle), y: .value("Épargne", p.epa))
-                        .foregroundStyle(p.epa >= 0 ? Color.positif : Color.negatif).cornerRadius(4)
-                }
-                .frame(height: 170)
-                .accessibilityLabel("Épargne \(duree.texte) : \(Fmt.eur(a.parMois, 0)) par mois en moyenne")
+                BarresInteractives(barres: barres, repere: moyenneTerminee(objectifs), nomRepere: "objectif de 20 %",
+                                   precision: { b in b.base > 0 ? "\(Fmt.pct(b.v / b.base * 100)) de ton salaire et de ta CAF" : "" })
             }
             if a.supports.isEmpty {
                 VideAnalyse(texte: "Aucune épargne enregistrée pour l'instant.")
@@ -361,14 +358,7 @@ struct PatrimoineDetail: View {
                         sous: "\(Fmt.eur(a.variation, 0, signe: true)) en 6 mois",
                         couleur: a.total < 0 ? .negatif : .primary)
             CarteAnalyse(titre: "Sur 6 mois", sous: "comptes, livrets et placements") {
-                Chart(a.courbe) { p in
-                    AreaMark(x: .value("Jour", p.jour), y: .value("Total", p.v))
-                        .foregroundStyle(.linearGradient(colors: [.white.opacity(0.22), .clear], startPoint: .top, endPoint: .bottom))
-                    LineMark(x: .value("Jour", p.jour), y: .value("Total", p.v))
-                        .foregroundStyle(Color.white)
-                }
-                .frame(height: 170)
-                .accessibilityLabel("Évolution sur 6 mois : \(Fmt.eur(a.variation, 0, signe: true))")
+                CourbeInteractive(points: a.courbe)
             }
             ForEach(a.groupes) { g in
                 CarteAnalyse(titre: g.nom, sous: Fmt.eur(g.total, 0)) {
@@ -412,15 +402,7 @@ struct ChargesDetail: View {
             HeroAnalyse(label: "Ce qui tombe chaque mois", valeur: Fmt.eur(total),
                         sous: base > 0 ? "\(Fmt.pct(total / base * 100)) de ton salaire et de ta CAF · \(l.count) prélèvements" : "\(l.count) prélèvements")
             CarteAnalyse(titre: "Fixes et courantes", sous: duree == .tout ? "par année" : "par mois") {
-                Chart(points) { p in
-                    BarMark(x: .value("Période", p.libelle), y: .value("Montant", p.fixes))
-                        .foregroundStyle(by: .value("Type", "Charges fixes"))
-                    BarMark(x: .value("Période", p.libelle), y: .value("Montant", p.courantes))
-                        .foregroundStyle(by: .value("Type", "Dépenses courantes"))
-                }
-                .chartForegroundStyleScale(["Charges fixes": Color.white, "Dépenses courantes": Color.white.opacity(0.3)])
-                .frame(height: 190)
-                .accessibilityLabel("Charges fixes et dépenses courantes \(duree.texte)")
+                BarresEmpilees(points: points)
             }
             if l.isEmpty {
                 VideAnalyse(texte: "Aucun prélèvement régulier détecté.")

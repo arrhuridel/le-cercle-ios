@@ -81,11 +81,11 @@ struct AnalysesView: View {
             }
             if let s = sel, !vide {
                 HStack(spacing: 14) {
-                    legende(Self.vert, "Revenus", Fmt.eur(s.rev, 0))
-                    legende(Self.rouge, "Dépenses", Fmt.eur(s.dep, 0))
+                    legende(Color.vertVif, "Revenus", Fmt.eur(s.rev, 0))
+                    legende(Color.rougeVif, "Dépenses", Fmt.eur(s.dep, 0))
                     Spacer(minLength: 0)
                     Text(Fmt.eur(s.rev - s.dep, 0, signe: true)).font(.footnote.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(s.rev - s.dep < 0 ? Self.rouge : Self.vert)
+                        .foregroundStyle(s.rev - s.dep < 0 ? Color.rougeVif : Color.vertVif)
                 }
             }
             if vide {
@@ -100,11 +100,11 @@ struct AnalysesView: View {
                     RuleMark(y: .value("Zéro", 0)).foregroundStyle(.white.opacity(0.35)).lineStyle(StrokeStyle(lineWidth: 1))
                     ForEach(points) { p in
                         BarMark(x: .value("Période", p.libelle), y: .value("Montant", p.rev))
-                            .foregroundStyle(Self.vert).cornerRadius(4)
-                            .opacity(opacite(p, sel))
+                            .foregroundStyle(degradeBarre(.vertVif)).cornerRadius(5)
+                            .opacity(opaciteSelection(p.cle, sel?.cle))
                         BarMark(x: .value("Période", p.libelle), y: .value("Montant", -p.dep))
-                            .foregroundStyle(Self.rouge).cornerRadius(4)
-                            .opacity(opacite(p, sel))
+                            .foregroundStyle(degradeBarre(.rougeVif, negative: true)).cornerRadius(5)
+                            .opacity(opaciteSelection(p.cle, sel?.cle))
                     }
                 }
                 .chartXSelection(value: $choisi)
@@ -127,26 +127,6 @@ struct AnalysesView: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .surface(in: .rect(cornerRadius: 24))
-    }
-
-    /// Vert et rouge francs de l'identité de l'app (#3DD68C, #FF6B6B), plus lisibles que les teintes sourdes des textes.
-    static let vert = Color(red: 0x3D / 255, green: 0xD6 / 255, blue: 0x8C / 255)
-    static let rouge = Color(red: 0xFF / 255, green: 0x6B / 255, blue: 0x6B / 255)
-
-    /// La période touchée reste vive, les autres pâlissent.
-    private func opacite(_ p: PointAnalyse, _ sel: PointAnalyse?) -> Double {
-        guard let sel else { return 1 }
-        return sel.cle == p.cle ? 1 : 0.35
-    }
-
-    private func legende(_ couleur: Color, _ nom: String, _ valeur: String) -> some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 2).fill(couleur).frame(width: 10, height: 10)
-            Text(nom).foregroundStyle(.secondary)
-            Text(valeur).monospacedDigit().fontWeight(.semibold)
-        }
-        .font(.footnote)
-        .accessibilityElement(children: .combine)
     }
 
     /// Une rubrique : son nom, son chiffre clé, une précision. Toute la tuile ouvre le détail.
