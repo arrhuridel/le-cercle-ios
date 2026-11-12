@@ -80,12 +80,11 @@ struct AnalysesView: View {
                 Text(sel?.libelle ?? "").font(.footnote).foregroundStyle(.secondary)
             }
             if let s = sel, !vide {
-                HStack(spacing: 14) {
+                HStack(alignment: .bottom, spacing: 16) {
                     legende(Color.vertVif, "Revenus", Fmt.eur(s.rev, 0))
                     legende(Color.rougeVif, "Dépenses", Fmt.eur(s.dep, 0))
-                    Spacer(minLength: 0)
-                    Text(Fmt.eur(s.rev - s.dep, 0, signe: true)).font(.footnote.weight(.semibold)).monospacedDigit()
-                        .foregroundStyle(s.rev - s.dep < 0 ? Color.rougeVif : Color.vertVif)
+                    Spacer(minLength: 8)
+                    legendeDroite("Écart", Fmt.eur(s.rev - s.dep, 0, signe: true), s.rev - s.dep < 0 ? Color.rougeVif : Color.vertVif)
                 }
             }
             if vide {

@@ -164,12 +164,12 @@ struct BarresEmpilees: View {
                 Spacer()
                 Text(Fmt.eur(fixes + courantes, 0)).font(.title3.bold()).monospacedDigit()
             }
-            HStack(spacing: 14) {
+            HStack(alignment: .bottom, spacing: 16) {
                 legende(.jauneVif, "Fixes", Fmt.eur(fixes, 0))
                 legende(Color.rougeVif.opacity(0.8), "Courantes", Fmt.eur(courantes, 0))
-                Spacer(minLength: 0)
+                Spacer(minLength: 8)
                 if fixes + courantes > 0 {
-                    Text("\(Fmt.pct(fixes / (fixes + courantes) * 100)) de fixe").font(.footnote).foregroundStyle(.secondary)
+                    legendeDroite("Part fixe", Fmt.pct(fixes / (fixes + courantes) * 100))
                 }
             }
         }
@@ -200,14 +200,25 @@ struct BarresEmpilees: View {
     }
 }
 
-/// Petit carré de couleur, nom et montant (légendes des graphiques).
+/// Légende d'un graphique : le carré de couleur et le nom sur une ligne, le montant en dessous.
+/// Sur deux lignes, le nom n'est plus coupé quand le montant a un chiffre de plus (retour d'Arthur du 12/11).
 func legende(_ couleur: Color, _ nom: String, _ valeur: String) -> some View {
-    HStack(spacing: 6) {
-        RoundedRectangle(cornerRadius: 2).fill(couleur).frame(width: 10, height: 10)
-        Text(nom).foregroundStyle(.secondary)
-        Text(valeur).monospacedDigit().fontWeight(.semibold)
+    VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 2).fill(couleur).frame(width: 10, height: 10)
+            Text(nom).font(.caption).foregroundStyle(.secondary).fixedSize()
+        }
+        Text(valeur).font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
     }
-    .font(.footnote)
+    .accessibilityElement(children: .combine)
+}
+
+/// Même présentation, alignée à droite (l'écart ou la part, au bout de la ligne de légende).
+func legendeDroite(_ nom: String, _ valeur: String, _ couleur: Color = .primary) -> some View {
+    VStack(alignment: .trailing, spacing: 2) {
+        Text(nom).font(.caption).foregroundStyle(.secondary).fixedSize()
+        Text(valeur).font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(couleur).lineLimit(1).minimumScaleFactor(0.7)
+    }
     .accessibilityElement(children: .combine)
 }
 
