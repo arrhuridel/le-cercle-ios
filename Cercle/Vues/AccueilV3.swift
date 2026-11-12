@@ -69,7 +69,9 @@ struct ResumeV3 {
         return [(Cat.besoins, "bes", "Besoins", 50.0, t.b.bes), (.envies, "env", "Envies", 30, t.b.env), (.epargne, "epa", "Épargne", 20, t.b.epa)].map { cat, k, nom, cible, dep in
             let parSc = Dictionary(grouping: comp.filter { $0.cat == cat }, by: \.sc).mapValues { $0.reduce(0) { $0 + $1.montant } }
             let cats = parSc.filter { abs($0.value) >= 0.5 }.sorted { $0.value > $1.value }.prefix(6).map { Famille.Ligne(nom: $0.key, montant: $0.value) }
-            let total = cat == .epargne ? t.b.rev * 0.20 : ref * cible / 100
+            // Les trois parts se calculent sur la même base : salaire, CAF et aide familiale (règle 7).
+            // Avant, l'épargne prenait 20 % de TOUS les revenus (remboursements, cadeaux…), d'où un objectif trop haut.
+            let total = ref * cible / 100
             return Famille(id: k, nom: nom, cible: cible, dep: dep, total: total, cats: Array(cats))
         }
     }
@@ -239,7 +241,7 @@ struct RegleBullesView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Ce que tu as déjà dépensé, sur ce que la règle te laisse ce mois-ci.").font(.subheadline).foregroundStyle(.secondary)
             ForEach(r.familles) { f in ligne(f) }
-            Text("Besoins, envies : \(Fmt.eur(t.b.ref, 0)) · Épargne : 20 % de \(Fmt.eur(t.b.rev, 0))").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+            Text("Calculé sur \(Fmt.eur(t.b.ref, 0)) : ton salaire et ta CAF du mois").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(FondView())
@@ -248,7 +250,7 @@ struct RegleBullesView: View {
         .sheet(item: $choisie) { fa in
             NavigationStack {
                 List {
-                    Section { Text("\(Fmt.eur(fa.dep, 0)) sur \(Fmt.eur(fa.total, 0)) (\(Int(fa.cible)) % de \(Fmt.eur(fa.id == "epa" ? t.b.rev : t.b.ref, 0)))").foregroundStyle(.secondary) }
+                    Section { Text("\(Fmt.eur(fa.dep, 0)) sur \(Fmt.eur(fa.total, 0)) (\(Int(fa.cible)) % de \(Fmt.eur(t.b.ref, 0)))").foregroundStyle(.secondary) }
                     ForEach(fa.cats, id: \.nom) { c in HStack { Text(c.nom); Spacer(); Text(Fmt.eur(c.montant, 0)).monospacedDigit().foregroundStyle(.secondary) } }
                 }
                 .navigationTitle(fa.nom)

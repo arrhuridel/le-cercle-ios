@@ -91,7 +91,7 @@ struct ResteDetailView: View {
                         .tint(.primary).font(.subheadline)
                     }
                 }
-                Text("Ici le loyer compte en entier, parce que c'est ce qui sort de ton compte, et le remboursement de ton coloc apparaît dans les autres entrées. Dans la règle 50-30-20, seule ta moitié du loyer compte. Objectif d'épargne du mois : \(Fmt.eur(r.objectifEpargne, 0)) (20 % de tous tes revenus).")
+                Text("Ici le loyer compte en entier, parce que c'est ce qui sort de ton compte, et le remboursement de ton coloc apparaît dans les autres entrées. Dans la règle 50-30-20, seule ta moitié du loyer compte. Objectif d'épargne du mois : \(Fmt.eur(r.objectifEpargne, 0)) (20 % de ton salaire et de ta CAF).")
                     .font(.footnote).foregroundStyle(.secondary).padding(16)
                     .surface(in: .rect(cornerRadius: 24))
             }

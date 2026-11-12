@@ -75,7 +75,8 @@ struct ResteReel {
         restants = max(J.ecart(auj, fin) + 1, 1); joursApres = max(J.ecart(auj, fin), 0)
         let courantes = dep.filter { !Ref.chargesFixes.contains($0.o.sc) }.reduce(0) { $0 - $1.e }
         rythme = courantes / Double(passes)
-        objectifEpargne = (revenusDuMois * 0.20 * 100).rounded() / 100   // 20 % de tous les revenus du mois (demande du 08/11)
+        // 20 % des revenus de référence du mois : salaire, CAF, aide familiale (demande du 12/11, même base que besoins et envies)
+        objectifEpargne = (revenusDuMois * 0.20 * 100).rounded() / 100
     }
 }
 
@@ -85,7 +86,7 @@ extension Magasin {
     var resteReel: ResteReel {
         memo("resteReel") {
             let t = tableau(mode: .paie)
-            return ResteReel(ops: ops, periode: t.per, revenusDuMois: t.b.rev, soldeInitial: soldesInitiaux[""] ?? 0)
+            return ResteReel(ops: ops, periode: t.per, revenusDuMois: t.b.ref, soldeInitial: soldesInitiaux[""] ?? 0)
         }
     }
 }

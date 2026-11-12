@@ -143,7 +143,7 @@ struct MonEspaceView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 CarteVerre(espacement: 12) {
-                    Text("Le total du mois est ce que tu reçois en salaire et CAF ; l'objectif d'épargne est 20 % de tous tes revenus. Rien à régler.")
+                    Text("Le total du mois est ce que tu reçois en salaire et CAF ; besoins, envies et épargne (50, 30 et 20 %) se calculent tous sur ce total. Rien à régler.")
                         .font(.footnote).foregroundStyle(.secondary)
                     NavigationLink("Enveloppes par catégorie") { EnveloppesView() }
                 }

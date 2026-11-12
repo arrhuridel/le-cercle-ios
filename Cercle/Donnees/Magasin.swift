@@ -74,7 +74,10 @@ final class Magasin {
         cacheCalculs[cle] = (etat, v)
         return v
     }
-    var comptes: [String] { memo("comptes") { Calc.comptes(ops) } }
+    /// Les comptes proposés partout dans l'app (écran Comptes, menus de saisie, filtre des opérations, patrimoine).
+    /// Les comptes qui n'existent plus (« Prêt Léandre ») sont retirés ici, une fois pour toutes : avant, ils
+    /// n'étaient masqués que dans l'écran Comptes. Leurs anciennes opérations restent visibles dans l'historique.
+    var comptes: [String] { memo("comptes") { Calc.comptes(ops).filter { !Magasin.comptesMasques.contains($0) } } }
     /// Prélèvements réguliers détectés dans tout l'historique.
     var prelevements: [Prelevements.Prelevement] { memo("prelevements|\(Fmt.masque)|\(Fmt.confidentiel)") { Prelevements.liste(toutes) } }
     /// Texte de recherche de chaque opération (sans accents, en minuscules), préparé une seule fois.

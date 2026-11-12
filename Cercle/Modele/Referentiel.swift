@@ -67,6 +67,9 @@ enum Ref {
         Theme(nom: "Cadeaux offerts", cat: .envies, symbole: "gift", court: "Cadeaux", teinte: c(0xC4908A)),
         Theme(nom: "Jeux d'argent", cat: .envies, symbole: "dice", court: "Jeux", teinte: c(0xB0946A)),
         Theme(nom: "Espèces", cat: .envies, symbole: "banknote", court: "Espèces", teinte: c(0x9AAE88)),
+        // Ajoutés le 12/11/2026 : ces paiements formaient un gros bloc flou dans « Autre envie »
+        Theme(nom: "Lyf Pay", cat: .envies, symbole: "qrcode", court: "Lyf Pay", teinte: c(0x8FB4A6)),
+        Theme(nom: "Virement à un proche", cat: .envies, symbole: "person.2", court: "Proches", teinte: c(0x9FA8C9)),
         Theme(nom: "Autre envie", cat: .envies, symbole: "sparkles", court: "Autre", teinte: c(0xA8A08E)),
         Theme(nom: "Livret", cat: .epargne, symbole: "banknote.fill", court: "Livret", teinte: c(0x7FB3A0)),
         Theme(nom: "Investissement", cat: .epargne, symbole: "chart.line.uptrend.xyaxis", court: "Placement", teinte: c(0x6FA9B8)),

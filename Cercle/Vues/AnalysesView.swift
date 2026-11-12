@@ -67,7 +67,8 @@ struct AnalysesView: View {
                 .surface(in: .rect(cornerRadius: 24))
                 HStack(spacing: 8) {
                     chiffre("Dépenses/mois", Fmt.eur(b.dep / nbMois, 0), "sur \(n) mois")
-                    chiffre("Épargne", b.rev > 0 ? Fmt.pct(b.epa / b.rev * 100) : "—", "repère : 20 %")
+                    // Même base que la règle 50-30-20 : salaire, CAF et aide familiale
+                    chiffre("Épargne", b.ref > 0 ? Fmt.pct(b.epa / b.ref * 100) : "—", "repère : 20 %")
                     chiffre("Revenus/mois", Fmt.eur(b.rev / nbMois, 0), "sur \(n) mois")
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), spacing: 8) {
