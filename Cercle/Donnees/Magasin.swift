@@ -206,18 +206,38 @@ final class Magasin {
     func synchroniserBanques() async {
         guard etat == .connecte, let client, synchro != .enCours else { return }
         synchro = .enCours
+        let lancement = Date().addingTimeInterval(-5)
         do {
             try await client.functions.invoke("synchroniser")
         } catch {
             synchro = .erreur("La synchronisation n'a pas pu être lancée. Réessaie dans un moment.")
             return
         }
-        // Sur GitHub, la synchro prend environ une minute : on relit la base deux fois
-        try? await Task.sleep(for: .seconds(75))
+        // La synchro tourne sur GitHub (30 s à 1 min) et écrit son heure de fin dans connexions_banque :
+        // on regarde toutes les 8 secondes, et on relit tout dès qu'elle est finie (3 minutes au plus)
+        for _ in 0..<22 {
+            try? await Task.sleep(for: .seconds(8))
+            let lues: [ConnexionBanque] = (try? await client.from("connexions_banque").select().execute().value) ?? []
+            if let fin = lues.compactMap({ Magasin.date($0.derniereSynchro) }).max(), fin >= lancement {
+                await rafraichir()
+                synchro = .faite
+                return
+            }
+        }
         await rafraichir()
-        try? await Task.sleep(for: .seconds(60))
-        await rafraichir()
-        synchro = .faite
+        synchro = .erreur("La synchronisation prend plus de temps que prévu. Tes comptes seront à jour à la prochaine ouverture.")
+    }
+
+    /// Heure de la dernière synchro des banques (la plus récente de toutes les banques reliées).
+    var derniereSynchro: Date? { connexions.compactMap { Magasin.date($0.derniereSynchro) }.max() }
+
+    /// Lit une date de la base (« 2026-11-16T00:21:30+01:00 », avec ou sans fraction de seconde).
+    static func date(_ texte: String?) -> Date? {
+        guard let texte else { return nil }
+        let f = ISO8601DateFormatter()
+        if let d = f.date(from: texte) { return d }
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.date(from: texte)
     }
 
     func rafraichir() async {

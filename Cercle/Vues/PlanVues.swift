@@ -575,13 +575,33 @@ struct BoutonSynchro: View {
 struct BandeauSynchro: View {
     @Environment(Magasin.self) private var magasin
     var body: some View {
-        switch magasin.synchro {
-        case .repos, .faite: EmptyView()
-        case .enCours:
-            Label("Synchronisation de tes banques… environ une minute", systemImage: "arrow.triangle.2.circlepath")
-                .font(.footnote).foregroundStyle(.secondary)
-        case .erreur(let message):
-            Label(message, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(Color.alerte)
+        Group {
+            switch magasin.synchro {
+            case .enCours:
+                Label("Synchronisation de tes banques… 30 secondes à 1 minute", systemImage: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(.secondary)
+            case .erreur(let message):
+                Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(Color.alerte)
+            case .faite, .repos:
+                if let d = magasin.derniereSynchro {
+                    let recente = Date().timeIntervalSince(d) < 36 * 3600
+                    Label(recente ? "À jour · synchronisé \(BandeauSynchro.quand(d))" : "Pas à jour · dernière synchro \(BandeauSynchro.quand(d))",
+                          systemImage: recente ? "checkmark.circle" : "exclamationmark.circle")
+                        .foregroundStyle(recente ? (magasin.synchro == .faite ? Color.positif : .secondary) : Color.alerte)
+                }
+            }
         }
+        .font(.footnote)
+        .lineLimit(2)
+        .animation(.smooth(duration: 0.25), value: magasin.synchro)
+    }
+
+    /// « aujourd'hui à 05 h 15 », « hier à 23 h 10 » ou « le 14 nov. à 08 h 02 ».
+    static func quand(_ d: Date) -> String {
+        let h = DateFormatter(); h.locale = Locale(identifier: "fr_FR"); h.dateFormat = "HH' h 'mm"
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { return "aujourd'hui à \(h.string(from: d))" }
+        if cal.isDateInYesterday(d) { return "hier à \(h.string(from: d))" }
+        return "le \(J.court(J.iso(d))) à \(h.string(from: d))"
     }
 }

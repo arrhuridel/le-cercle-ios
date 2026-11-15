@@ -281,19 +281,22 @@ def controler_soldes(toutes: list[dict], ops: list[dict], banques: dict[str, dic
 
 def enregistrer_controles(cl, pid: str, controles: dict) -> None:
     """Garde le résultat dans la table connexions_banque (lisible par l'app : pop-up en cas d'écart, rappel de reconnexion)."""
+    # 1. L'heure de la synchro (colonnes de la v19, toujours là) : l'app s'en sert pour savoir que c'est fini et « à jour »
+    existantes = {r["compte"]: r["id"] for r in cl.table("connexions_banque").select("id,compte").eq("profil_id", pid).execute().data}
+    maintenant = datetime.now().astimezone().isoformat(timespec="seconds")
+    for k, c in controles.items():
+        ligne = {"profil_id": pid, "banque": c["banque"], "compte": k, "fin_accord": c["fin_accord"], "actif": True, "derniere_synchro": maintenant}
+        if k in existantes:
+            cl.table("connexions_banque").update(ligne).eq("id", existantes[k]).execute()
+        else:
+            existantes[k] = cl.table("connexions_banque").insert(ligne).execute().data[0]["id"]
+    # 2. Le contrôle des soldes (3 colonnes ajoutées par connexions_banque_soldes.sql)
     try:
-        existantes = {r["compte"]: r["id"] for r in cl.table("connexions_banque").select("id,compte").eq("profil_id", pid).execute().data}
         for k, c in controles.items():
-            ligne = {"profil_id": pid, "banque": c["banque"], "compte": k, "fin_accord": c["fin_accord"], "actif": True,
-                     "derniere_synchro": datetime.now().astimezone().isoformat(timespec="seconds"),
-                     "solde_base": c["solde_base"], "solde_banque": c["solde_banque"], "alerte": c["alerte"]}
-            if k in existantes:
-                cl.table("connexions_banque").update(ligne).eq("id", existantes[k]).execute()
-            else:
-                cl.table("connexions_banque").insert(ligne).execute()
-        print("Contrôles enregistrés pour l'app.")
-    except Exception as e:   # colonnes pas encore créées (script SQL) : la synchro reste valable, seule l'alerte manque
-        print("Contrôles non enregistrés (lance le script SQL connexions_banque_soldes.sql) :", type(e).__name__)
+            cl.table("connexions_banque").update({"solde_base": c["solde_base"], "solde_banque": c["solde_banque"], "alerte": c["alerte"]}).eq("id", existantes[k]).execute()
+        print("Heure de synchro et contrôles enregistrés pour l'app.")
+    except Exception as e:   # colonnes pas encore créées : la synchro reste valable, seule l'alerte manque
+        print("Heure de synchro enregistrée ; contrôles non enregistrés (lance connexions_banque_soldes.sql) :", type(e).__name__)
 
 
 if __name__ == "__main__":
