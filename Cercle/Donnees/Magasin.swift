@@ -40,6 +40,9 @@ final class Magasin {
     @ObservationIgnored private var ecriture: Task<Void, Never>?
     /// Heure de la dernière lecture réussie de la base (affichée dans les réglages).
     var misAJour: Date?
+    /// Synchronisation des banques lancée par le bouton « Synchroniser » (elle tourne sur GitHub, pas sur l'iPhone).
+    enum EtatSynchro: Equatable { case repos, enCours, faite, erreur(String) }
+    var synchro: EtatSynchro = .repos
 
     private var client: SupabaseClient?
     let configure: Bool
@@ -184,6 +187,25 @@ final class Magasin {
     func rafraichirSiAncien() async {
         if let d = misAJour, Date().timeIntervalSince(d) < 60 { return }
         await rafraichir()
+    }
+
+    /// Bouton « Synchroniser » : demande à la fonction Supabase « synchroniser » de lancer la synchro des banques sur GitHub
+    /// (la clé de la banque n'est jamais dans l'app), puis relit la base quand la synchro a eu le temps de tourner.
+    func synchroniserBanques() async {
+        guard etat == .connecte, let client, synchro != .enCours else { return }
+        synchro = .enCours
+        do {
+            try await client.functions.invoke("synchroniser")
+        } catch {
+            synchro = .erreur("La synchronisation n'a pas pu être lancée. Réessaie dans un moment.")
+            return
+        }
+        // Sur GitHub, la synchro prend environ une minute : on relit la base deux fois
+        try? await Task.sleep(for: .seconds(75))
+        await rafraichir()
+        try? await Task.sleep(for: .seconds(60))
+        await rafraichir()
+        synchro = .faite
     }
 
     func rafraichir() async {

@@ -1,0 +1,35 @@
+# Synchronise les banques (Enable Banking) vers la base Supabase du Cercle : site, web app et app iPhone sont à jour.
+# Se lance chaque nuit, et à la demande : bouton « Synchroniser » de l'app (via la fonction Supabase « synchroniser »)
+# ou bouton « Run workflow » dans l'onglet Actions.
+# Secrets à créer dans GitHub (Settings > Secrets and variables > Actions) : EB_CLE_TEXTE (contenu du fichier .pem),
+# EB_SESSIONS (contenu de imports/banque/sessions.json), SUPABASE_URL, SUPABASE_SECRET_KEY (clé secrète de la base).
+name: Synchroniser les banques
+
+on:
+  schedule:
+    - cron: "15 4 * * *"      # chaque nuit à 4 h 15 UTC (5 h 15 à Paris en hiver)
+  workflow_dispatch:
+
+concurrency:                  # une seule synchro à la fois ; une demande pendant une synchro attend son tour
+  group: synchro-banque
+  cancel-in-progress: false
+
+jobs:
+  synchro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Outils
+        run: pip install --quiet requests pyjwt cryptography supabase
+      - name: Synchroniser les 10 derniers jours
+        run: python banque/synchro.py --ecrire --jours 10
+        env:
+          EB_CLE_TEXTE: ${{ secrets.EB_CLE_TEXTE }}
+          EB_SESSIONS: ${{ secrets.EB_SESSIONS }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          PYTHONIOENCODING: utf-8

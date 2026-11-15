@@ -101,6 +101,7 @@ struct AccueilView: View {
                     // Les deux commandes de l'écran, dans un même groupe de verre
                     GlassEffectContainer(spacing: 8) {
                         HStack(spacing: 8) {
+                            BoutonSynchro()
                             Button { masque.toggle() } label: { Image(systemName: masque ? "eye.slash" : "eye").frame(width: 44, height: 44).contentShape(.circle) }
                                 .accessibilityLabel(masque ? "Afficher les montants" : "Masquer les montants")
                                 .buttonStyle(.plain).verre(.regular.interactive(), in: .circle)
@@ -112,6 +113,7 @@ struct AccueilView: View {
                     }
                 }
                 BandeauEtat()
+                BandeauSynchro()
                 if magasin.etat == .demo { Text("Mode démo : données inventées").badge(.alerte) }
                 // Plan du 15/11/2026 : tout l'écran montre l'argent réel de chaque compte (la règle 50-30-20
                 // et les abonnements sont passés dans Analyses ; « Il te reste » se retrouve sur la page Crédit Mutuel)

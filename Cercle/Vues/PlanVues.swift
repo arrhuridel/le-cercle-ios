@@ -550,3 +550,38 @@ struct SuiviMontantsPlan: DynamicProperty {
     @AppStorage("plan.apport") var apport = 250.0
     @AppStorage("plan.objectif") var objectif = 13_000.0
 }
+
+// MARK: - Synchroniser les banques
+
+/// Bouton rond du Résumé : lance la synchronisation des banques (environ une minute, sur GitHub).
+struct BoutonSynchro: View {
+    @Environment(Magasin.self) private var magasin
+    var body: some View {
+        Button { Task { await magasin.synchroniserBanques() } } label: {
+            Group {
+                if magasin.synchro == .enCours { ProgressView() } else { Image(systemName: "arrow.triangle.2.circlepath") }
+            }
+            .frame(width: 44, height: 44).contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .verre(.regular.interactive(), in: .circle)
+        .disabled(magasin.synchro == .enCours || magasin.etat != .connecte)
+        .accessibilityLabel("Synchroniser mes banques")
+        .sensoryFeedback(.success, trigger: magasin.synchro == .faite)
+    }
+}
+
+/// Une ligne sous le titre pendant et après la synchronisation.
+struct BandeauSynchro: View {
+    @Environment(Magasin.self) private var magasin
+    var body: some View {
+        switch magasin.synchro {
+        case .repos, .faite: EmptyView()
+        case .enCours:
+            Label("Synchronisation de tes banques… environ une minute", systemImage: "arrow.triangle.2.circlepath")
+                .font(.footnote).foregroundStyle(.secondary)
+        case .erreur(let message):
+            Label(message, systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(Color.alerte)
+        }
+    }
+}

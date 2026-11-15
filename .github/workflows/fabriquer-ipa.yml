@@ -5,6 +5,10 @@ name: Fabriquer l'app (.ipa)
 on:
   push:
     branches: [main]
+    paths-ignore:           # la synchro des banques ne refabrique pas l'app (les minutes Mac comptent double)
+      - "banque/**"
+      - "supabase/**"
+      - ".github/workflows/synchro-banque.yml"
   workflow_dispatch:        # bouton « Run workflow » dans l'onglet Actions
 
 concurrency:                # un nouvel envoi annule la fabrication précédente encore en cours
