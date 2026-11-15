@@ -72,7 +72,7 @@ extension Magasin {
 // MARK: - Résumé : l'argent réel sur chaque compte
 
 struct ResumePlan: View {
-    private var montants = SuiviMontantsPlan()   // observe les montants du plan (réglages)
+    var montants = SuiviMontantsPlan()   // observe les montants du plan (réglages) ; pas « private » : sinon la vue ne peut pas être créée depuis un autre fichier
     @Environment(Magasin.self) private var magasin
     @Environment(\.accessibilityReduceMotion) private var reduire
     @State private var apparu = false
@@ -173,7 +173,7 @@ private extension View {
 // MARK: - Comptes : ce que j'ai le droit de dépenser
 
 struct ComptesPlanView: View {
-    private var montants = SuiviMontantsPlan()   // observe les montants du plan (réglages)
+    var montants = SuiviMontantsPlan()   // observe les montants du plan (réglages) ; pas « private » : sinon la vue ne peut pas être créée depuis un autre fichier
     @Environment(Magasin.self) private var magasin
     @AppStorage("masque") private var masque = false   // l'écran se redessine quand on masque les montants
 
@@ -268,7 +268,7 @@ struct ComptesPlanView: View {
 // MARK: - Page d'un compte
 
 struct PocheDetailView: View {
-    private var montants = SuiviMontantsPlan()   // observe les montants du plan (réglages)
+    var montants = SuiviMontantsPlan()   // observe les montants du plan (réglages) ; pas « private » : sinon la vue ne peut pas être créée depuis un autre fichier
     @Environment(Magasin.self) private var magasin
     let id: String
     @State private var ouverte: Operation?
