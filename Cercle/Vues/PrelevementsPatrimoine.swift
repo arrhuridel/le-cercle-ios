@@ -111,7 +111,7 @@ struct PatrimoineView: View {
         // Livrets : soldes réels des relevés (comme le site) ; à défaut, la somme des virements
         let lv = magasin.livrets
         let livrets = lv?.total(le: J.auj) ?? max(ops.map(Calc.compense).filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }, 0)
-        let verse = ops.map(Calc.compense).filter { $0.sc == "Investissement" }.reduce(0) { $0 + $1.montant }
+        let verse = Calc.placements(ops).total   // prix d'achat, PEA compris ; sans les frais et pertes des placements vendus
         let titres = Dictionary(grouping: magasin.mouvements, by: \.titre)
         let positions = titres.map { t, l -> (titre: String, parts: Double, investi: Double, valeur: Double?) in
             let parts = l.reduce(0) { $0 + ($1.sens == "achat" ? $1.parts : -$1.parts) }

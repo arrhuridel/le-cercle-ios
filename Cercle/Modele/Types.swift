@@ -17,6 +17,8 @@ struct Operation: Codable, Identifiable, Hashable {
     var devise: String?
     var montantDevise: Double?
     var creeLe: String?
+    /// « plan:<id>:<AAAA-MM> » pour une opération ajoutée par un virement programmé (unique en base : pas de doublon entre appareils).
+    var idBanque: String? = nil
     /// Lien vers un groupe : seulement pour les opérations calculées à partir du Tricount (jamais stockées).
     var partage: LienPartage? = nil
     /// Loyer payé avec un colocataire qui en rembourse une part : compté pour moitié (jamais stocké, calculé au chargement).
@@ -25,9 +27,9 @@ struct Operation: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, montant, compte, source, statut, devise
         case date = "date_operation", profilId = "profil_id", cat = "categorie", sc = "sous_categorie"
-        case note = "description", vers = "vers_compte", montantDevise = "montant_devise", creeLe = "created_at"
+        case note = "description", vers = "vers_compte", montantDevise = "montant_devise", creeLe = "created_at", idBanque = "id_banque"
     }
-    static let colonnes = "id,date_operation,profil_id,categorie,sous_categorie,montant,description,compte,vers_compte,source,statut,devise,montant_devise,created_at"
+    static let colonnes = "id,date_operation,profil_id,categorie,sous_categorie,montant,description,compte,vers_compte,source,statut,devise,montant_devise,created_at,id_banque"
 }
 
 struct LienPartage: Hashable {

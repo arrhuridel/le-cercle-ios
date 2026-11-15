@@ -54,10 +54,13 @@ struct ResteReel {
             let parSc = Dictionary(grouping: l, by: { $0.o.sc }).mapValues { -$0.reduce(0) { $0 + $1.e } }
             return Famille(nom: nom, total: -l.reduce(0) { $0 + $1.e }, cats: parSc.filter { abs($0.value) >= 0.005 }.map { Ligne(nom: $0.key, montant: $0.value) }.sorted { $0.montant > $1.montant })
         }
-        let epa = cycle.filter { $0.o.cat == .epargne }
-        epargne = Dictionary(grouping: epa, by: { $0.o.sc }).mapValues { -$0.reduce(0) { $0 + $1.e } }.filter { abs($0.value) >= 0.005 }
-            .map { Ligne(nom: $0.key == "Investissement" ? "Trade Republic" : $0.key, montant: $0.value) }.sorted { $0.montant > $1.montant }
-        let resteOps = cycle.filter { !(estRef($0.o) && $0.e > 0) && $0.o.cat != .besoins && $0.o.cat != .envies && $0.o.cat != .epargne }
+        // Épargne sortie du compte : livrets, placements, et virements vers un compte de placement (Trade Republic, règle du 14/11/2026)
+        let estEpa: (Operation) -> Bool = { $0.cat == .epargne || ($0.cat == .virement && Calc.compense($0).cat == .epargne) }
+        let nomEpa: (Operation) -> String = { $0.cat == .virement ? ($0.vers.flatMap { $0.isEmpty ? nil : $0 } ?? $0.compte) : $0.sc == "Investissement" ? "Placements" : $0.sc }
+        let epa = cycle.filter { estEpa($0.o) }
+        epargne = Dictionary(grouping: epa, by: { nomEpa($0.o) }).mapValues { -$0.reduce(0) { $0 + $1.e } }.filter { abs($0.value) >= 0.005 }
+            .map { Ligne(nom: $0.key, montant: $0.value) }.sorted { $0.montant > $1.montant }
+        let resteOps = cycle.filter { !(estRef($0.o) && $0.e > 0) && $0.o.cat != .besoins && $0.o.cat != .envies && !estEpa($0.o) }
         autres = Dictionary(grouping: resteOps, by: { $0.o.sc }).mapValues { $0.reduce(0) { $0 + $1.e } }.filter { abs($0.value) >= 0.005 }
             .map { Ligne(nom: Self.libellesAutres[$0.key] ?? $0.key, montant: $0.value) }.sorted { $0.montant > $1.montant }
 

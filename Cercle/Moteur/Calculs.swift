@@ -5,7 +5,24 @@ enum Calc {
     /// Vue « calculs », comme `compenser` du site : un retrait de livret devient une épargne négative…
     /// Loyer (règle d'Arthur du 07/11/2026) : avec un colocataire, le loyer compte toujours pour moitié,
     /// et le « Remboursement loyer » est alors déjà déduit (il compte 0).
+    /// Comptes de placement (règle d'Arthur du 14/11/2026, comme `_placements_au_virement` du site et `compense` de la web app) :
+    /// l'épargne compte le jour du virement depuis le compte courant (un retour vers le compte courant la réduit) ;
+    /// les achats, ventes et versements PEA faits sur le compte n'en sont que le détail (0 dans les calculs) ;
+    /// ce qui est payé avec la carte reste une dépense et sort aussi de l'épargne (`sortieEpargneCarte`).
+    static let comptesPlacement: Set<String> = ["Trade Republic"]
+    static func sortieEpargneCarte(_ o: Operation) -> Double { comptesPlacement.contains(o.compte) && o.cat.estDepense ? o.montant : 0 }
+
     static func compense(_ o: Operation) -> Operation {
+        if o.cat == .virement {
+            let vers = comptesPlacement.contains(o.vers ?? ""), depuis = comptesPlacement.contains(o.compte)
+            guard vers != depuis else { return o }
+            var c = o; c.cat = .epargne; c.sc = "Investissement"; c.montant = vers ? o.montant : -o.montant
+            return c
+        }
+        if comptesPlacement.contains(o.compte) && (o.sc == "Investissement" || o.sc == "Vente placement") {
+            var c = o; c.cat = .virement; c.sc = "Virement interne"; c.montant = 0
+            return c
+        }
         if o.sc == "Loyer" && o.loyerPartage { var c = o; c.montant = o.montant / 2; c.loyerPartage = false; return c }
         if o.sc == "Remboursement loyer" { var c = o; c.sc = "Loyer"; c.cat = .besoins; c.montant = 0; return c }
         guard let cible = Ref.compensations[o.sc] else { return o }
@@ -45,8 +62,37 @@ enum Calc {
             case .epargne: b.epa += c.montant
             case .virement: break
             }
+            b.epa -= sortieEpargneCarte(o)
         }
         return b
+    }
+
+    /// Placements au prix d'achat et ce qui a été perdu sur les placements entièrement vendus (frais, moins-values).
+    /// PEA : tout ce qui a été versé. Hors PEA, une famille qui finit par des ventes est vendue depuis la première de ces ventes.
+    /// Même règle que `placements_par_jour` du site et `placements` de la web app (epargne.js).
+    struct Placements { var familles: [(nom: String, montant: Double)] = []; var total = 0.0; var pertes = 0.0 }
+    static func famillePlacement(_ o: Operation) -> String {
+        let t = o.note.uppercased()
+        if t.contains("PEA") { return "PEA" }
+        if t.contains("BITSTACK") { return "Bitstack" }
+        return o.compte.isEmpty ? "Autres placements" : "Compte-titres \(o.compte)"
+    }
+    static func placements(_ ops: [Operation], jusqua: String = J.auj) -> Placements {
+        var r = Placements()
+        let groupes = Dictionary(grouping: ops.filter { $0.sc == "Investissement" || $0.sc == "Vente placement" }, by: famillePlacement)
+        for (nom, l0) in groupes {
+            let l = l0.sorted { $0.date < $1.date }
+            let net = l.filter { $0.date <= jusqua }.reduce(0) { $0 + ($1.sc == "Investissement" ? $1.montant : -$1.montant) }
+            var fermeture: String? = nil
+            if nom != "PEA", l.last?.sc == "Vente placement" {
+                let dernierAchat = l.last { $0.sc == "Investissement" }?.date ?? ""
+                fermeture = l.first { $0.sc == "Vente placement" && $0.date >= dernierAchat }?.date
+            }
+            if let f = fermeture, jusqua >= f { r.pertes += net }
+            else { r.total += net; if abs(net) > 0.005 { r.familles.append((nom, net)) } }
+        }
+        r.familles.sort { $0.montant > $1.montant }
+        return r
     }
 
     struct Regle { var parts: [Cat: Double]; var alertes: [String]; var base: Double }

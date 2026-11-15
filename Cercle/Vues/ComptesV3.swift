@@ -31,12 +31,12 @@ extension Magasin {
             let type = k.isEmpty || ["revolut", "boursobank"].contains(bas) ? "Courant" : (bas.contains("trade") || bas.contains("pea")) ? "Placement" : "Autre"
             var montant = self.solde(k), detail: String? = nil
             let variation = lui.filter { $0.date > il30 }.reduce(0) { $0 + Calc.effet($1, k) }
-            if type == "Placement" {   // l'argent investi compte dans le solde (achats − ventes sur ce compte)
-                let achats = lui.filter { $0.compte == k && $0.sc == "Investissement" }.reduce(0) { $0 + $1.montant }
-                let ventes = lui.filter { $0.compte == k && $0.sc == "Vente placement" }.reduce(0) { $0 + $1.montant }
-                let investi = achats - ventes
-                detail = "dont \(Fmt.eur(investi, 0)) investis · \(Fmt.eur(montant)) disponibles"
-                montant += investi
+            if type == "Placement" {   // placements au prix d'achat (PEA : montant versé) ; ce qui a été perdu sur un placement vendu n'est plus compté
+                let pl = Calc.placements(lui.filter { $0.compte == k })
+                let familles = pl.familles.map { "\($0.nom) \(Fmt.eur($0.montant))" }.joined(separator: " · ")
+                detail = (familles.isEmpty ? "" : familles + " · ") + "\(Fmt.eur(montant)) disponibles"
+                    + (pl.pertes > 0.005 ? " · frais et pertes \(Fmt.eur(pl.pertes))" : "")
+                montant += pl.total
             }
             l.append(CompteV3(id: k.isEmpty ? "courant" : k, nom: nom, banque: k.isEmpty ? "Crédit Mutuel" : nom, type: type, solde: montant, variation: variation, detail: detail))
         }

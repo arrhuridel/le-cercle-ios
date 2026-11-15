@@ -357,17 +357,18 @@ final class Magasin {
     @discardableResult func enregistrer(_ m: MouvementTitre) async -> Bool { await enregistrerElement(m, dans: \.mouvements, table: "mouvements_titres") }
 
     /// Crée les saisies automatiques arrivées à échéance (une par mois et par règle).
-    /// Une saisie n'est pas recréée si le mois contient déjà une opération du même thème au montant proche (±20 %),
-    /// par exemple la vraie ligne importée du relevé : sinon la facture serait comptée deux fois.
+    /// Une saisie n'est pas recréée si une opération porte déjà sa clé « plan:<id>:<AAAA-MM> » (ajoutée par le site,
+    /// la web app ou un autre iPhone), ou si le mois contient déjà la même opération (même thème, même compte d'arrivée,
+    /// montant à ±20 %), par exemple la vraie ligne importée du relevé : sinon elle serait comptée deux fois.
     func appliquerPlanifiees() async {
         var nouvelles: [Operation] = []
         for p in planifiees where p.actif {
             var d = J.date(p.depuis)
             var k = 0
             while J.iso(d) <= J.auj && k < 24 {
-                let mois = String(J.iso(d).prefix(7))
-                let existe = (ops + nouvelles).contains { $0.sc == p.sc && $0.date.hasPrefix(mois) && abs($0.montant - p.montant) <= max(p.montant * 0.2, 1) }
-                if !existe { nouvelles.append(nouvelleOperation(date: J.iso(d), sc: p.sc, montant: p.montant, note: p.note, compte: p.compte, vers: p.vers, source: "auto")) }
+                let mois = String(J.iso(d).prefix(7)), cle = "plan:\(p.id):\(mois)"
+                let existe = (ops + nouvelles).contains { $0.idBanque == cle || ($0.sc == p.sc && (p.vers == nil || $0.vers == p.vers) && $0.date.hasPrefix(mois) && abs($0.montant - p.montant) <= max(p.montant * 0.2, 1)) }
+                if !existe { var o = nouvelleOperation(date: J.iso(d), sc: p.sc, montant: p.montant, note: p.note, compte: p.compte, vers: p.vers, source: "auto"); o.idBanque = cle; nouvelles.append(o) }
                 k += 1
                 let c = J.comp(d)
                 d = J.faire(c.a, c.m + 1, p.jour)

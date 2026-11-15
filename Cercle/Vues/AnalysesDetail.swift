@@ -127,11 +127,8 @@ extension Magasin {
         for k in cles {
             somme += Calc.solde(ops, k, jusqua: jour, initial: soldesInitiaux[k] ?? 0)
             let bas = k.lowercased()
-            if bas.contains("trade") || bas.contains("pea") {
-                for o in ops where o.compte == k && o.date <= jour {
-                    if o.sc == "Investissement" { somme += o.montant }
-                    if o.sc == "Vente placement" { somme -= o.montant }
-                }
+            if bas.contains("trade") || bas.contains("pea") {   // placements au prix d'achat, sans les frais et pertes des placements vendus
+                somme += Calc.placements(ops.filter { $0.compte == k }, jusqua: jour).total
             }
         }
         return somme + (lv?.total(le: jour) ?? 0)
