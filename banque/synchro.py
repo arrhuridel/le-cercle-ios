@@ -183,31 +183,117 @@ def main() -> None:
         print(f"Annulé : {len(j['ajouts'])} opérations retirées.")
         return
 
+    sur_github = bool(os.environ.get("GITHUB_ACTIONS"))
     depuis = date.today() - timedelta(days=args.jours)
     lignes = lignes_banques(depuis)
-    base = [o for o in lire_tout(cl, pid) if o["date_operation"][:10] >= (depuis - timedelta(days=ECART_JOURS + 6)).isoformat()]
+    toutes = lire_tout(cl, pid)
+    base = [o for o in toutes if o["date_operation"][:10] >= (depuis - timedelta(days=ECART_JOURS + 6)).isoformat()]
     nouvelles, deja = retirer_doublons(lignes, base)
     ops = operations_a_ajouter(nouvelles, pid)
+    # Contrôle des soldes : les ajouts d'un compte dont le solde ne collerait plus avec la banque sont retenus
+    controles, ops, retenues = controler_soldes(toutes, ops, soldes_banques())
+    ecarts = [c for c in controles.values() if c["alerte"]]
 
-    print(f"Depuis le {depuis:%d/%m/%Y} : {len(lignes)} opérations à la banque, {deja} déjà en base, {len(ops)} à ajouter.")
+    print(f"Depuis le {depuis:%d/%m/%Y} : {len(lignes)} opérations à la banque, {deja} déjà en base, {len(ops)} à ajouter"
+          + (f", {len(retenues)} retenues (solde)" if retenues else "") + ".")
+    print(f"Contrôle des soldes : {len(controles)} comptes, {len(ecarts)} écart{'s' if len(ecarts) > 1 else ''}.")
     # Sur GitHub, le journal d'exécution d'un dépôt public est lisible par tous : jamais le détail des opérations, seulement les nombres
-    for o in ([] if os.environ.get("GITHUB_ACTIONS") else ops):
-        sens = "+" if o["categorie"] == "Revenu" else "→" if o["categorie"] == "Virement" else "−"
-        compte = o["compte"] or "Crédit Mutuel"
-        print(f"  {o['date_operation']}  {compte:<14} {sens}{o['montant']:>9.2f} €  {o['sous_categorie']:<20} {o['description']}"
-              + (f" (vers {o['vers_compte'] or 'Crédit Mutuel'})" if o["categorie"] == "Virement" else ""))
+    if not sur_github:
+        for o in ops:
+            sens = "+" if o["categorie"] == "Revenu" else "→" if o["categorie"] == "Virement" else "−"
+            compte = o["compte"] or "Crédit Mutuel"
+            print(f"  {o['date_operation']}  {compte:<14} {sens}{o['montant']:>9.2f} €  {o['sous_categorie']:<20} {o['description']}"
+                  + (f" (vers {o['vers_compte'] or 'Crédit Mutuel'})" if o["categorie"] == "Virement" else ""))
+        for c in controles.values():
+            print(f"  solde {c['banque']:<15} app {c['solde_base']:>9.2f} € · banque {c['solde_banque']:>9.2f} €"
+                  + (f"  ⚠ {c['alerte']}" if c["alerte"] else "  ok"))
     if not args.ecrire:
-        print("\nSimulation : rien n'a été écrit. Ajoute --ecrire pour enregistrer." if ops else "\nRien à ajouter.")
+        print("\nSimulation : rien n'a été écrit. Ajoute --ecrire pour enregistrer.")
         return
-    if not ops:
+    ids = []
+    if ops:
+        JOURNAUX.mkdir(parents=True, exist_ok=True)
+        chemin = JOURNAUX / f"journal_synchro_{datetime.now():%Y%m%d_%H%M%S}.json"
+        ids = [r["id"] for r in cl.table("operations").insert(ops).execute().data]
+        chemin.write_text(json.dumps({"ajouts": ids, "operations": ops}, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"Écrit : {len(ids)} opérations ajoutées" + ("" if sur_github else f" · journal pour annuler : {chemin}"))
+    else:
         print("Rien à ajouter.")
-        return
-    JOURNAUX.mkdir(parents=True, exist_ok=True)
-    chemin = JOURNAUX / f"journal_synchro_{datetime.now():%Y%m%d_%H%M%S}.json"
-    ids = [r["id"] for r in cl.table("operations").insert(ops).execute().data]
-    chemin.write_text(json.dumps({"ajouts": ids, "operations": ops}, ensure_ascii=False, indent=1), encoding="utf-8")
-    print("")
-    print(f"Écrit : {len(ids)} opérations ajoutées" + ("" if os.environ.get("GITHUB_ACTIONS") else f" · journal pour annuler : {chemin}"))
+    enregistrer_controles(cl, pid, controles)
+
+
+# ---------- 4. Contrôle des soldes ----------
+
+def soldes_banques() -> dict[str, dict]:
+    """Solde de chaque compte chez la banque : tous les montants donnés (disponible, comptabilisé…), et la fin de l'accord."""
+    r = {}
+    for banque, s in sessions().items():
+        for c in s["comptes"]:
+            if c.get("type") == "CARD":
+                continue
+            montants = sorted({round(float(b["balance_amount"]["amount"]), 2) for b in eb.soldes(c["uid"]) if b.get("balance_amount")})
+            r[s["compte_base"]] = {"banque": banque, "montants": montants, "fin_accord": str(s.get("valide_jusqua") or "")[:10] or None}
+    return r
+
+
+def fr(v: float, signe: bool = False) -> str:
+    """Montant à la française : 1 234,56 €."""
+    t = f"{abs(v):,.2f}".replace(",", " ").replace(".", ",")
+    return f"{('+' if v >= 0 else '−') if signe else ('−' if v < 0 else '')}{t} €"
+
+
+def controler_soldes(toutes: list[dict], ops: list[dict], banques: dict[str, dict]) -> tuple[dict, list[dict], list[dict]]:
+    """Compare, compte par compte, le solde de l'app (toutes les opérations jusqu'à aujourd'hui) avec celui de la banque.
+    - avant les ajouts, le solde colle (à 1 centime près) avec un des montants de la banque, et après aussi : tout va bien ;
+    - avant oui, après non : les ajouts de ce compte fausseraient un solde juste → ils sont retenus et signalés ;
+    - avant non : le solde de l'app est déjà faux → les ajouts de ce compte sont retenus et l'écart est signalé.
+    Un virement qui touche un compte retenu est retenu aussi. Retourne (contrôles par compte, ops gardées, ops retenues)."""
+    auj = date.today().isoformat()
+    avant = {k: round(sum(effet(o, k) for o in toutes if o["date_operation"][:10] <= auj), 2) for k in banques}
+    colle = lambda v, k: any(abs(v - m) < 0.011 for m in banques[k]["montants"])
+    touche = lambda o: {o["compte"] or ""} | ({o["vers_compte"] or ""} if o["categorie"] == "Virement" and o.get("vers_compte") is not None else set())
+    bloques, gardees = set(), list(ops)
+    while True:
+        apres = {k: round(avant[k] + sum(effet(o, k) for o in gardees), 2) for k in banques}
+        nouveaux = {k for k in banques if k not in bloques and not colle(apres[k], k)}
+        if not nouveaux:
+            break
+        bloques |= nouveaux
+        gardees = [o for o in gardees if not (touche(o) & bloques)]
+    retenues = [o for o in ops if o not in gardees]
+    controles = {}
+    for k, b in banques.items():
+        proche = min(b["montants"], key=lambda m: abs(m - avant[k])) if b["montants"] else 0.0
+        alerte = None
+        if k in bloques:
+            mes = [o for o in retenues if k in touche(o)]
+            if colle(avant[k], k):
+                detail = ", ".join(f"{o['description']} {fr(o['montant'])} le {o['date_operation'][8:10]}/{o['date_operation'][5:7]}" for o in mes[:3])
+                alerte = (f"{len(mes)} opération{'s' if len(mes) > 1 else ''} de la banque non ajoutée{'s' if len(mes) > 1 else ''} : "
+                          f"ton solde est juste sans {'elles' if len(mes) > 1 else 'elle'} ({detail}). Vérifie si tu l'avais saisie avec un autre montant.")
+            else:
+                alerte = (f"Le solde de l'app ({fr(avant[k])}) diffère de celui de la banque ({fr(proche)}) "
+                          f"de {fr(avant[k] - proche, True)}." + (f" {len(mes)} opération(s) en attente." if mes else ""))
+        controles[k] = {"banque": b["banque"], "compte": k, "solde_base": avant[k], "solde_banque": proche, "alerte": alerte,
+                        "fin_accord": b["fin_accord"]}
+    return controles, gardees, retenues
+
+
+def enregistrer_controles(cl, pid: str, controles: dict) -> None:
+    """Garde le résultat dans la table connexions_banque (lisible par l'app : pop-up en cas d'écart, rappel de reconnexion)."""
+    try:
+        existantes = {r["compte"]: r["id"] for r in cl.table("connexions_banque").select("id,compte").eq("profil_id", pid).execute().data}
+        for k, c in controles.items():
+            ligne = {"profil_id": pid, "banque": c["banque"], "compte": k, "fin_accord": c["fin_accord"], "actif": True,
+                     "derniere_synchro": datetime.now().astimezone().isoformat(timespec="seconds"),
+                     "solde_base": c["solde_base"], "solde_banque": c["solde_banque"], "alerte": c["alerte"]}
+            if k in existantes:
+                cl.table("connexions_banque").update(ligne).eq("id", existantes[k]).execute()
+            else:
+                cl.table("connexions_banque").insert(ligne).execute()
+        print("Contrôles enregistrés pour l'app.")
+    except Exception as e:   # colonnes pas encore créées (script SQL) : la synchro reste valable, seule l'alerte manque
+        print("Contrôles non enregistrés (lance le script SQL connexions_banque_soldes.sql) :", type(e).__name__)
 
 
 if __name__ == "__main__":

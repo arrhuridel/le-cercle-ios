@@ -7,3 +7,4 @@ Payload/
 # Jamais de clé ni de donnée réelle dans ce dépôt
 *.env
 secrets*
+__pycache__/

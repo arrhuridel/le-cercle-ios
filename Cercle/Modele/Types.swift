@@ -204,3 +204,19 @@ struct Instantane: Codable {
     var cours: [Cours] = []
     var misAJour: Date?
 }
+
+/// Une banque reliée (table connexions_banque) : remplie par la synchro de nuit, avec le contrôle des soldes.
+struct ConnexionBanque: Codable, Hashable, Identifiable {
+    var id: String
+    var banque: String
+    var compte: String
+    var finAccord: String?
+    var derniereSynchro: String?
+    var soldeBase: Double?
+    var soldeBanque: Double?
+    var alerte: String?
+    enum CodingKeys: String, CodingKey {
+        case id, banque, compte, alerte
+        case finAccord = "fin_accord", derniereSynchro = "derniere_synchro", soldeBase = "solde_base", soldeBanque = "solde_banque"
+    }
+}

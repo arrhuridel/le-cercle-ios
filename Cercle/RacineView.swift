@@ -11,6 +11,7 @@ struct RacineView: View {
     @Environment(Magasin.self) private var magasin
     @Environment(\.scenePhase) private var phase
     @AppStorage("faceId") private var faceId = false
+    @AppStorage("alerteBanqueVue") private var alerteVue = ""
     @State private var onglet: Onglet = .resume
     @State private var saisieOuverte = false
     @State private var verrouille = false
@@ -65,7 +66,18 @@ struct RacineView: View {
             .sensoryFeedback(.impact(weight: .light), trigger: saisieOuverte, condition: saisieVientDeSOuvrir)
             .sheet(isPresented: $saisieOuverte) { SaisieView() }
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+            // Pop-up : solde différent de la banque, ou accès bancaire bientôt terminé (une fois par nouveau message)
+            .alert("À vérifier sur tes comptes", isPresented: Binding(
+                get: { magasin.etat == .connecte && !magasin.alertesBanque.isEmpty && cleAlerte != alerteVue },
+                set: { if !$0 { alerteVue = cleAlerte } })) {
+                Button("J'ai compris") { alerteVue = cleAlerte }
+            } message: {
+                Text(magasin.alertesBanque.joined(separator: "\n\n"))
+            }
     }
+
+    /// Le même message ne revient pas après « J'ai compris » ; un nouveau message (autre écart, autre jour) réapparaît.
+    private var cleAlerte: String { magasin.alertesBanque.joined(separator: "|") }
 
     private func vibrationOnglet(_ ancien: Onglet, _ nouveau: Onglet) -> SensoryFeedback? {
         if ancien == .ajouter || nouveau == .ajouter { return nil }

@@ -43,6 +43,18 @@ final class Magasin {
     /// Synchronisation des banques lancée par le bouton « Synchroniser » (elle tourne sur GitHub, pas sur l'iPhone).
     enum EtatSynchro: Equatable { case repos, enCours, faite, erreur(String) }
     var synchro: EtatSynchro = .repos
+    /// Banques reliées et résultat du dernier contrôle des soldes (pop-up en cas d'écart).
+    var connexions: [ConnexionBanque] = []
+
+    /// Ce que la pop-up doit dire : écarts de solde, puis accès bancaires à renouveler dans les 10 jours. Vide = rien à dire.
+    var alertesBanque: [String] {
+        var l = connexions.compactMap { c in c.alerte.map { "\(c.banque) : \($0)" } }
+        let limite = J.plus(J.auj, jours: 10)
+        for c in connexions {
+            if let f = c.finAccord, f <= limite { l.append("\(c.banque) : l'accès à la banque se termine le \(J.court(f)). Relance la connexion de cette banque.") }
+        }
+        return l
+    }
 
     private var client: SupabaseClient?
     let configure: Bool
@@ -253,6 +265,8 @@ final class Magasin {
             let crs = try await lectureCrs
             let gs = try await lectureGs
             let mbr: [Membre] = (try? await client.rpc("membres").execute().value) ?? []
+            // Contrôle des soldes de la synchro (table facultative : son absence ne bloque rien)
+            let cnx: [ConnexionBanque] = (try? await client.from("connexions_banque").select().execute().value) ?? []
             var grp: [GroupeComplet] = []
             if !gs.isEmpty {
                 let ids = gs.map(\.id)
@@ -266,7 +280,7 @@ final class Magasin {
                                                   depenses: deps.filter { $0.groupeId == g.id }, reglements: regs.filter { $0.groupeId == g.id }) }
             }
             // Tout est lu : on remplace d'un coup (jamais un état à moitié chargé)
-            profil = p; ops = toutes; enveloppes = env; objectifs = obj; planifiees = pla; mouvements = mvt; cours = crs; membres = mbr; groupes = grp
+            profil = p; ops = toutes; enveloppes = env; objectifs = obj; planifiees = pla; mouvements = mvt; cours = crs; membres = mbr; groupes = grp; connexions = cnx
             // Corrections déjà apprises sur le site : elles deviennent des règles de l'app
             for (cle, v) in p.reglesImport ?? [:] where v.count == 2 && !regles.contains(where: { $0.motif == cle }) {
                 regles.append(Import.Regle(motif: cle, sc: v[0], note: v[1]))
