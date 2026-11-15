@@ -50,9 +50,9 @@ extension Magasin {
     }
 }
 
-// MARK: - Comptes (onglet 3) : tous les comptes, puis l'accès à toutes les opérations
+// MARK: - Tous les comptes et livrets (ouvert depuis l'onglet Comptes) : soldes réels, puis l'accès à toutes les opérations
 
-struct ComptesView: View {
+struct TousComptesView: View {
     @Environment(Magasin.self) private var magasin
     @AppStorage("ordreComptes") private var ordreBrut = ""
     @AppStorage("masque") private var masque = false   // l'écran se redessine quand on masque les montants
@@ -79,10 +79,10 @@ struct ComptesView: View {
     var body: some View {
         let _ = masque
         let l = ordonner(magasin.comptesV3), total = l.reduce(0) { $0 + $1.solde }
-        NavigationStack {
+        Group {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 2) { Text("Tout ton argent").font(.subheadline).foregroundStyle(.secondary); Text("Comptes").font(.largeTitle.bold()) }
+                    VStack(alignment: .leading, spacing: 2) { Text("Tout ton argent").font(.subheadline).foregroundStyle(.secondary); Text("Tous les comptes").font(.largeTitle.bold()) }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("au total").font(.footnote).foregroundStyle(.secondary)
@@ -117,7 +117,7 @@ struct ComptesView: View {
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
             .background(FondView())
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: CompteV3.self) { c in
                 HistoriqueCompteView(compte: c).navigationTransition(.zoom(sourceID: c.id, in: zoom))
             }

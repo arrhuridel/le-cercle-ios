@@ -62,12 +62,29 @@ struct AnalysesView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                // Venus du Résumé (plan du 15/11/2026) : la règle 50-30-20 et le calendrier des abonnements
+                HStack(spacing: 8) {
+                    NavigationLink { RegleBullesView() } label: { raccourci("circle.grid.3x3", "Règle 50-30-20") }.buttonStyle(.plain)
+                    NavigationLink { AbonnementsView() } label: { raccourci("calendar", "Abonnements") }.buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
             .background(FondView())
             .toolbar(.hidden, for: .navigationBar)
             .onChange(of: duree) { _, _ in choisi = nil; garde = nil }
         }
+    }
+
+    /// Petit bouton d'accès (une ligne) : garde l'écran sans défilement.
+    private func raccourci(_ icone: String, _ titre: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icone).font(.footnote).foregroundStyle(.secondary)
+            Text(titre).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: 0)
+            Chevron()
+        }
+        .padding(.horizontal, 14).frame(maxWidth: .infinity, minHeight: 46)
+        .surface(in: .rect(cornerRadius: 16)).contentShape(.rect(cornerRadius: 16))
     }
 
     /// Le graphique et, au-dessus, le détail de la barre touchée (par défaut : la dernière période).

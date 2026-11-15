@@ -88,18 +88,13 @@ struct AccueilView: View {
     enum Page: Hashable { case regle, abos, reste, reglages }
 
     var body: some View {
-        let t = magasin.tableau(), r = ResumeV3(t: t)
+        let _ = masque
+        let v = magasin.plan
         NavigationStack {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Menu {
-                            ForEach(Calc.Mode.allCases) { m in Button(m.rawValue) { modeBrut = m.rawValue } }
-                        } label: {
-                            HStack(spacing: 4) { Text(t.per.libelle); Image(systemName: "chevron.down").font(.caption) }
-                                .frame(minHeight: 30).contentShape(.rect)
-                        }
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        Text("Paie dans \(v.paieDans) jours").font(.subheadline).foregroundStyle(.secondary).frame(minHeight: 30)
                         Text("Résumé").font(.largeTitle.bold())
                     }
                     Spacer()
@@ -118,14 +113,15 @@ struct AccueilView: View {
                 }
                 BandeauEtat()
                 if magasin.etat == .demo { Text("Mode démo : données inventées").badge(.alerte) }
-                carteReste(r).matchedTransitionSource(id: Page.reste, in: zoom)
-                carteRegle(r).matchedTransitionSource(id: Page.regle, in: zoom)
-                carteAbonnements.matchedTransitionSource(id: Page.abos, in: zoom)
+                // Plan du 15/11/2026 : tout l'écran montre l'argent réel de chaque compte (la règle 50-30-20
+                // et les abonnements sont passés dans Analyses ; « Il te reste » se retrouve sur la page Crédit Mutuel)
+                ResumePlan()
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)
             .background(FondView())
             .toolbar(.hidden, for: .navigationBar)
             .sensoryFeedback(.selection, trigger: masque)
+            .navigationDestination(for: String.self) { id in PocheDetailView(id: id) }
             .navigationDestination(item: $page) { p in
                 Group {
                     switch p {

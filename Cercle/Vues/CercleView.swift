@@ -142,6 +142,7 @@ struct MonEspaceView: View {
                     Text(["prive": "Personne ne voit ton budget.", "resume": "Les membres voient tes totaux et pourcentages, sans le détail.", "tout": "Les membres voient ton résumé et le détail de tes opérations."][magasin.profil?.visibilite ?? "prive"] ?? "")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
+                CartePlanReglages()
                 CarteVerre(espacement: 12) {
                     Text("Le total du mois est ce que tu reçois en salaire et CAF ; besoins, envies et épargne (50, 30 et 20 %) se calculent tous sur ce total. Rien à régler.")
                         .font(.footnote).foregroundStyle(.secondary)
