@@ -190,7 +190,8 @@ def main() -> None:
     ops = operations_a_ajouter(nouvelles, pid)
 
     print(f"Depuis le {depuis:%d/%m/%Y} : {len(lignes)} opérations à la banque, {deja} déjà en base, {len(ops)} à ajouter.")
-    for o in ops:
+    # Sur GitHub, le journal d'exécution d'un dépôt public est lisible par tous : jamais le détail des opérations, seulement les nombres
+    for o in ([] if os.environ.get("GITHUB_ACTIONS") else ops):
         sens = "+" if o["categorie"] == "Revenu" else "→" if o["categorie"] == "Virement" else "−"
         compte = o["compte"] or "Crédit Mutuel"
         print(f"  {o['date_operation']}  {compte:<14} {sens}{o['montant']:>9.2f} €  {o['sous_categorie']:<20} {o['description']}"
@@ -205,7 +206,8 @@ def main() -> None:
     chemin = JOURNAUX / f"journal_synchro_{datetime.now():%Y%m%d_%H%M%S}.json"
     ids = [r["id"] for r in cl.table("operations").insert(ops).execute().data]
     chemin.write_text(json.dumps({"ajouts": ids, "operations": ops}, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"\nÉcrit : {len(ids)} opérations ajoutées · journal pour annuler : {chemin}")
+    print("")
+    print(f"Écrit : {len(ids)} opérations ajoutées" + ("" if os.environ.get("GITHUB_ACTIONS") else f" · journal pour annuler : {chemin}"))
 
 
 if __name__ == "__main__":
