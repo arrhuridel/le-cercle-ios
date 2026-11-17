@@ -8,12 +8,32 @@ import XCTest
 ///
 /// Mêmes vérifications que `web_app/tests/test_moteur.html`, pour chaque chiffre qui a un équivalent dans l'app :
 /// loyers partagés, bilans (total et mois par mois), soldes, comptes, jours de paie, répartition du dernier mois,
-/// totaux par thème (total et mois par mois), noms de marchands, dépenses par marchand.
+/// totaux par thème (total et mois par mois), noms de marchands, dépenses par marchand,
+/// et les cas pièges (loyer à 44, 46 et 45 jours avec changement d'heure ; virements programmés ; fin de cycle prévue).
 /// Non repris ici (propres à la web app) : flux, liens entre opérations, statistiques, export CSV.
 ///
-/// Un `XCTExpectFailure` marque un écart déjà connu avec le site, à corriger à l'étape 3 de la piste A.
-/// Quand l'écart est corrigé, le test le signale (« attendu en échec, mais passe ») : retirer alors la ligne.
+/// Un écart connu avec le site se marque par `XCTExpectFailure("raison")` en tête du test, en attendant sa correction.
 final class ReferenceTests: XCTestCase {
+    private struct CasLoyer: Decodable {
+        let nom: String
+        let phrase: String
+        let operations: [Cercle.Operation]
+        let attendu: [String: Bool]
+    }
+    private struct CasEcheance: Decodable {
+        let nom: String
+        let phrase: String
+        let plan: Planifiee
+        let operations: [Cercle.Operation]
+        let auj: String
+        let attendu: [String]
+        let fin_cycle: String
+        let a_venir: [String]
+    }
+    private struct Cas: Decodable {
+        let loyers: [CasLoyer]
+        let echeances: [CasEcheance]
+    }
     private struct Reference: Decodable {
         let auj: String
         let operations: [Cercle.Operation]
@@ -29,13 +49,12 @@ final class ReferenceTests: XCTestCase {
         let theme_mois: [String: [String: Double]]
         let marchands: [String: String]
         let marchand_depenses: [String: Double]
+        let cas: Cas
     }
 
     private var ref: Reference!
     private var ops: [Cercle.Operation] = []
     private let tolerance = 0.006
-    private static let ecartMarchands = "Étape 3 : l'app n'a pas les alias de marchands du site (ex. « mcdo » devient « McDonald's » sur le site)."
-    private static let ecartCarteTR = "Étape 3 (piste B) : le site retire de l'épargne « Investissement » ce qui est payé avec la carte Trade Republic ; l'app ne le fait que dans le bilan."
 
     override func setUpWithError() throws {
         let url = try XCTUnwrap(Bundle(for: ReferenceTests.self).url(forResource: "donnees_python", withExtension: "json"),
@@ -73,16 +92,14 @@ final class ReferenceTests: XCTestCase {
 
     private func duMois(_ mois: String) -> [Cercle.Operation] { Calc.entre(ops, mois + "-01", mois + "-31") }
 
-    /// Total de chaque thème après compensation, comme `compenser` du site puis un regroupement par thème.
+    /// Total de chaque thème tel que les écrans le calculent (Calc.comptees), comme `compenser` du site puis un regroupement.
     private func parTheme(_ l: [Cercle.Operation]) -> [String: Double] {
         var m: [String: Double] = [:]
-        for o in l { let c = Calc.compense(o); m[c.sc, default: 0] += c.montant }
+        for c in Calc.comptees(l) { m[c.sc, default: 0] += c.montant }
         return m
     }
 
-    private func sans(_ t: [String: Double], _ cle: String) -> [String: Double] { t.filter { $0.key != cle } }
-
-    // MARK: Règles
+    // MARK: Données de démo
 
     func testLoyersPartages() {
         let diff = ops.filter { $0.loyerPartage != (ref.loyer_partage[$0.id] ?? false) }
@@ -117,34 +134,54 @@ final class ReferenceTests: XCTestCase {
         verifier(ecarts(rep, ref.repartition_mois_courant), "répartition des dépenses (\(mois))")
     }
 
+    /// Comprend « Investissement » : la carte Trade Republic y est retirée de l'épargne (règle 8), comme sur le site.
     func testThemesSurToutLHistorique() {
-        verifier(ecarts(sans(parTheme(ops), "Investissement"), sans(ref.theme_total, "Investissement")), "total par thème")
+        verifier(ecarts(parTheme(ops), ref.theme_total), "total par thème")
     }
 
     func testThemesMoisParMois() {
-        let e = ref.theme_mois.keys.sorted().flatMap { m in
-            ecarts(sans(parTheme(duMois(m)), "Investissement"), sans(ref.theme_mois[m]!, "Investissement"), prefixe: "\(m) ")
-        }
+        let e = ref.theme_mois.keys.sorted().flatMap { m in ecarts(parTheme(duMois(m)), ref.theme_mois[m]!, prefixe: "\(m) ") }
         verifier(e, "thèmes de \(ref.theme_mois.count) mois")
     }
 
-    func testThemeInvestissement() {
-        XCTExpectFailure(Self.ecartCarteTR)
-        verifier(ecarts(["Investissement": parTheme(ops)["Investissement"] ?? 0], ["Investissement": ref.theme_total["Investissement"] ?? 0]),
-                 "thème Investissement")
-    }
-
     func testNomsDeMarchands() {
-        XCTExpectFailure(Self.ecartMarchands)
-        let mauvais = ops.filter { Analyse.marchand($0) != ref.marchands[$0.id] }
+        let mauvais = ops.filter { Analyse.nom($0) != ref.marchands[$0.id] }
         XCTAssertTrue(mauvais.isEmpty, "\(mauvais.count) nom(s) différent(s), ex. " +
-                      Set(mauvais.map { "\(Analyse.marchand($0)) au lieu de \(ref.marchands[$0.id] ?? "?")" }).sorted().prefix(3).joined(separator: " | "))
+                      Set(mauvais.map { "\(Analyse.nom($0)) au lieu de \(ref.marchands[$0.id] ?? "?")" }).sorted().prefix(3).joined(separator: " | "))
     }
 
     func testDepensesParMarchand() {
-        XCTExpectFailure(Self.ecartMarchands)
         var pm: [String: Double] = [:]
-        for o in ops { let c = Calc.compense(o); if c.cat.estDepense { pm[Analyse.marchand(o), default: 0] += c.montant } }
+        for o in ops { let c = Calc.compense(o); if c.cat.estDepense { pm[Analyse.nom(o), default: 0] += c.montant } }
         verifier(ecarts(pm.filter { ref.marchand_depenses[$0.key] != nil }, ref.marchand_depenses), "dépenses par marchand")
+    }
+
+    // MARK: Cas pièges
+
+    func testCasLoyers() {
+        for c in ref.cas.loyers {
+            let faux = Calc.marquerLoyers(c.operations).filter { $0.loyerPartage != (c.attendu[$0.id] ?? false) }
+            XCTAssertTrue(faux.isEmpty, "cas « \(c.nom) » : \(c.phrase)")
+        }
+    }
+
+    func testCasEcheancesDues() {
+        for c in ref.cas.echeances {
+            let dues = Calc.echeancesDues(c.plan, c.operations, jusqua: c.auj).map { $0.date }
+            XCTAssertEqual(dues, c.attendu, "cas « \(c.nom) » : \(c.phrase)")
+        }
+    }
+
+    func testCasFinDeCyclePrevue() {
+        for c in ref.cas.echeances {
+            J.fixe = J.date(c.auj)
+            let per = Calc.Periode(mode: .paie, debut: c.auj, fin: c.auj, finBudget: c.fin_cycle, precDebut: nil, precFin: nil, libelle: "")
+            let rr = ResteReel(ops: c.operations, periode: per, revenusDuMois: 0, soldeInitial: 0, planifiees: [c.plan])
+            let programmes = rr.aVenir.filter { $0.nom.hasPrefix("Virement vers") }
+            XCTAssertEqual(programmes.count, c.a_venir.count, "cas « \(c.nom) » : virements programmés à venir avant la fin du cycle")
+            XCTAssertEqual(programmes.reduce(0) { $0 + $1.montant }, Double(c.a_venir.count) * c.plan.montant, accuracy: tolerance)
+            XCTAssertEqual(c.a_venir.compactMap { _ in Calc.prochaineEcheance(c.plan, apres: c.auj) }, c.a_venir,
+                           "cas « \(c.nom) » : date de la prochaine échéance")
+        }
     }
 }

@@ -117,7 +117,7 @@ struct DepensesVue: View {
         Text("\(Fmt.eur(total, 0)) de dépenses \(duree.texte)").font(.footnote).foregroundStyle(.secondary)
         let mois = Calc.mensuel(ops, 7).filter { !$0.mois.enCours }.suffix(6)
         Classement(lignes: rep.prefix(10).map { e in
-            let v = mois.map { m in Calc.entre(ops, m.mois.debut, m.mois.fin).map(Calc.compense).filter { $0.sc == e.sc }.reduce(0) { $0 + $1.montant } }
+            let v = mois.map { m in Calc.comptees(Calc.entre(ops, m.mois.debut, m.mois.fin)).filter { $0.sc == e.sc }.reduce(0) { $0 + $1.montant } }
             let evo = Calc.evolution(Array(v)).map { abs($0) >= 3 ? " · \($0 > 0 ? "↗" : "↘") \(Fmt.pct(abs($0))) sur 3 mois" : "" } ?? ""
             return Classement.Ligne(nom: e.sc, v: e.v, sous: "\(Fmt.pct(e.v / max(total, 1) * 100)) · \(Fmt.eur(e.v / nb, 0)) par mois" + evo, sc: e.sc)
         })
@@ -125,7 +125,7 @@ struct DepensesVue: View {
             Chart {
                 ForEach(duree.tranches(ops)) { m in
                     ForEach(rep.prefix(5), id: \.sc) { e in
-                        BarMark(x: .value("Mois", m.libelle), y: .value("€", Calc.entre(ops, m.debut, m.fin).map(Calc.compense).filter { $0.sc == e.sc }.reduce(0) { $0 + $1.montant }))
+                        BarMark(x: .value("Mois", m.libelle), y: .value("€", Calc.comptees(Calc.entre(ops, m.debut, m.fin)).filter { $0.sc == e.sc }.reduce(0) { $0 + $1.montant }))
                             .foregroundStyle(Ref.theme(e.sc).teinte)
                     }
                 }
@@ -148,7 +148,7 @@ struct MarchandsVue: View {
     @AppStorage(Duree.cle) private var duree: Duree = .douze
     var body: some View {
         let opsP = Calc.entre(magasin.toutes, duree.debut(magasin.toutes), J.auj).filter { $0.cat.estDepense && !["Loyer", "Factures", "Assurances", "Espèces"].contains($0.sc) }
-        let g = Dictionary(grouping: opsP, by: Analyse.marchand).map { (nom: $0.key, l: $0.value) }.sorted { $0.l.reduce(0) { $0 + $1.montant } > $1.l.reduce(0) { $0 + $1.montant } }
+        let g = Dictionary(grouping: opsP, by: Analyse.nom).map { (nom: $0.key, l: $0.value) }.sorted { $0.l.reduce(0) { $0 + $1.montant } > $1.l.reduce(0) { $0 + $1.montant } }
         Text("\(opsP.count) achats \(duree.texte), hors loyer, factures, assurances et espèces").font(.footnote).foregroundStyle(.secondary)
         Classement(lignes: g.prefix(15).map { e in
             let s = e.l.reduce(0) { $0 + $1.montant }
@@ -263,7 +263,7 @@ struct EpargneVue: View {
 
     /// Découpé en étapes typées : en une seule expression, le compilateur abandonnait (trop long à vérifier).
     private static func supports(_ ops: [Operation], _ lv: Livrets?) -> [Classement.Ligne] {
-        let epargne: [Operation] = ops.map(Calc.compense).filter { o in o.cat == .epargne && (lv == nil || o.sc != "Livret") }
+        let epargne: [Operation] = Calc.comptees(ops).filter { o in o.cat == .epargne && (lv == nil || o.sc != "Livret") }
         let groupes: [String: [Operation]] = Dictionary(grouping: epargne, by: { $0.sc })
         var lignes: [Classement.Ligne] = []
         for (sc, l) in groupes {
@@ -285,7 +285,7 @@ struct ChargesVue: View {
         carte("Charges fixes ou dépenses courantes ?", "Ce qui tombe chaque mois quoi qu'il arrive, et le reste") {
             Chart {
                 ForEach(m, id: \.mois.cle) { x in
-                    let l = Calc.entre(ops, x.mois.debut, x.mois.fin).map(Calc.compense).filter { $0.cat.estDepense }
+                    let l = Calc.comptees(Calc.entre(ops, x.mois.debut, x.mois.fin)).filter { $0.cat.estDepense }
                     BarMark(x: .value("Mois", x.mois.libelle), y: .value("€", l.filter { Ref.chargesFixes.contains($0.sc) }.reduce(0) { $0 + $1.montant })).foregroundStyle(by: .value("Type", "Charges fixes"))
                     BarMark(x: .value("Mois", x.mois.libelle), y: .value("€", l.filter { !Ref.chargesFixes.contains($0.sc) }.reduce(0) { $0 + $1.montant })).foregroundStyle(by: .value("Type", "Courantes"))
                 }

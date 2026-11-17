@@ -40,7 +40,7 @@ enum Suivi {
             res.append(Recurrent(cle: k, nom: recent.note.components(separatedBy: " · ").first.flatMap { $0.isEmpty ? nil : $0 } ?? recent.sc,
                                  sc: recent.sc, cat: recent.cat, montant: m, mensuel: mensuel, jour: J.comp(d).j, dernier: dernier,
                                  prochain: J.iso(mensuel ? J.moisSuivant(d) : J.plus(d, jours: 7)),
-                                 actif: J.ecart(d, J.aujourdhui) <= (mensuel ? 40 : 12), compte: recent.compte))
+                                 actif: J.ecart(d, J.aujourdhui) <= (mensuel ? 45 : 12), compte: recent.compte))
         }
         return res.sorted { $0.annuel > $1.annuel }
     }
@@ -126,18 +126,18 @@ enum Suivi {
     static func objectifs(_ obj: [Objectif], _ ops: [Operation], livret: Double? = nil) -> [SuiviObjectif] {
         let limite = J.plus(J.auj, jours: -91)
         var total: [String: Double] = [:], recent: [String: Double] = [:]
-        for o in ops { let c = Calc.compense(o); guard c.cat == .epargne else { continue }
+        for c in Calc.comptees(ops) where c.cat == .epargne {   // carte Trade Republic retirée de l'épargne (règle 8)
             total[c.sc, default: 0] += c.montant
-            if o.date > limite { recent[c.sc, default: 0] += c.montant } }
+            if c.date > limite { recent[c.sc, default: 0] += c.montant } }
         return obj.map { o in
             let actuel = o.support == "Livret" && livret != nil ? livret! : (total[o.support] ?? 0)
             return SuiviObjectif(o: o, actuel: max(actuel, 0), rythme: (recent[o.support] ?? 0) / 3)
         }
     }
 
-    /// Abonnements actifs (thème « Abonnements », payés dans les 40 derniers jours) et leur coût mensuel sur 3 mois.
+    /// Abonnements actifs (thème « Abonnements », payés dans les 45 derniers jours, décision du 17/11/2026) et leur coût mensuel sur 3 mois.
     static func abonnements(_ ops: [Operation]) -> [(nom: String, mensuel: Double)] {
-        let l40 = J.plus(J.auj, jours: -40), l92 = J.plus(J.auj, jours: -92)
+        let l45 = J.plus(J.auj, jours: -45), l92 = J.plus(J.auj, jours: -92)
         var m: [String: (dernier: String, trim: Double)] = [:]
         for o in ops where o.sc == "Abonnements" && o.date <= J.auj {
             let k = o.note.isEmpty ? "Abonnement" : o.note
@@ -146,6 +146,6 @@ enum Suivi {
             if o.date > l92 { e.trim += o.montant }
             m[k] = e
         }
-        return m.filter { $0.value.dernier >= l40 }.map { ($0.key, $0.value.trim / 3) }.sorted { $0.mensuel > $1.mensuel }
+        return m.filter { $0.value.dernier >= l45 }.map { ($0.key, $0.value.trim / 3) }.sorted { $0.mensuel > $1.mensuel }
     }
 }

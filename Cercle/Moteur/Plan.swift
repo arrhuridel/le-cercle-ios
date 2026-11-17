@@ -91,7 +91,7 @@ enum Plan {
                 let k = trouve.id, c = trouve.c
                 dep[k, default: 0] += c.montant
                 let prevu = tout.first { $0.id == k }?.compte ?? ""
-                let titre = o.note.isEmpty ? o.sc : Analyse.marchand(o)
+                let titre = o.note.isEmpty ? o.sc : Analyse.nom(o)
                 lignes[k, default: []].append(Ligne(id: o.id, date: o.date, titre: titre, sc: c.sc, montant: c.montant,
                                                     payeAvec: (k == "epargne" || k == "apport" || o.compte == prevu) ? nil : nomCompte(o.compte),
                                                     moitie: o.sc == "Loyer" && o.loyerPartage, op: o))

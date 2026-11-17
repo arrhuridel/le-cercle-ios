@@ -155,7 +155,7 @@ enum Faits {
             return "À ce rythme, tu finirais la période vers \(Fmt.eur(t.prev.depFin, 0)) de dépenses pour un budget de \(Fmt.eur(t.budget, 0)), avec un solde d'environ \(Fmt.eur(t.prev.soldeFin, 0))."
         }
         if let theme = Ref.themes.first(where: { n.contains($0.nom.sansAccents) || n.contains($0.court.sansAccents) }) {
-            let cur = t.opsP.map(Calc.compense).filter { $0.sc == theme.nom }.reduce(0) { $0 + $1.montant }
+            let cur = Calc.comptees(t.opsP).filter { $0.sc == theme.nom }.reduce(0) { $0 + $1.montant }
             let env = t.enveloppes.first { $0.e.sc == theme.nom }
             return "\(theme.nom) : \(Fmt.eur(cur, 0)) sur la période en cours." + (env.map { " Ton enveloppe est utilisée à \(Fmt.pct($0.part))." } ?? " Tu n'as pas d'enveloppe pour ce poste : en créer une aide à le suivre.")
         }

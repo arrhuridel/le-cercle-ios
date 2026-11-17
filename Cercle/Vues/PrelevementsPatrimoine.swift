@@ -110,7 +110,7 @@ struct PatrimoineView: View {
         let comptes = magasin.comptes.reduce(0) { $0 + magasin.solde($1) }
         // Livrets : soldes réels des relevés (comme le site) ; à défaut, la somme des virements
         let lv = magasin.livrets
-        let livrets = lv?.total(le: J.auj) ?? max(ops.map(Calc.compense).filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }, 0)
+        let livrets = lv?.total(le: J.auj) ?? max(Calc.comptees(ops).filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }, 0)
         let verse = Calc.placements(ops).total   // prix d'achat, PEA compris ; sans les frais et pertes des placements vendus
         let titres = Dictionary(grouping: magasin.mouvements, by: \.titre)
         let positions = titres.map { t, l -> (titre: String, parts: Double, investi: Double, valeur: Double?) in
@@ -131,7 +131,7 @@ struct PatrimoineView: View {
                 let points = stride(from: 180, through: 0, by: -6).map { k -> (Date, Double) in
                     let d = J.plus(J.auj, jours: -k)
                     let c = magasin.comptes.reduce(0) { $0 + Calc.solde(ops, $1, jusqua: d, initial: magasin.soldesInitiaux[$1] ?? 0) }
-                    let avant = Calc.entre(ops, "2000-01-01", d).map(Calc.compense).filter { $0.cat == .epargne }
+                    let avant = Calc.entre(ops, "2000-01-01", d).map(Calc.compense).filter { $0.cat == .epargne }   // pas comptees : la carte TR baisse déjà le solde du compte
                     let autres = avant.filter { $0.sc != "Livret" }.reduce(0) { $0 + $1.montant }
                     let livret = lv?.total(le: d) ?? avant.filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }
                     return (J.date(d), c + livret + autres)

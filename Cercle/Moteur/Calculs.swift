@@ -31,18 +31,37 @@ enum Calc {
         return c
     }
 
-    /// Marque les loyers partagés : un « Remboursement loyer » tombe à 45 jours ou moins (même règle que le site).
+    /// Marque les loyers partagés : un « Remboursement loyer » du même profil tombe à 45 jours ou moins (même règle que le site).
+    /// Écart compté en jours de calendrier, pas en secondes : un changement d'heure entre les deux ne change rien.
     /// Un loyer payé seul, sans remboursement autour, reste entier.
     static func marquerLoyers(_ ops: [Operation]) -> [Operation] {
-        let remb = ops.filter { $0.sc == "Remboursement loyer" }.map { J.date($0.date) }
+        var remb: [String: [String]] = [:]
+        for o in ops where o.sc == "Remboursement loyer" { remb[o.profilId, default: []].append(o.date) }
         guard !remb.isEmpty else { return ops }
         return ops.map { o in
             guard o.sc == "Loyer" else { return o }
             var c = o
-            let d = J.date(o.date)
-            c.loyerPartage = remb.contains { abs($0.timeIntervalSince(d)) <= 45 * 86400 }
+            c.loyerPartage = (remb[o.profilId] ?? []).contains { abs(J.ecart(o.date, $0)) <= 45 }
             return c
         }
+    }
+
+    /// Les opérations telles qu'elles comptent dans les calculs, comme `compenser` du site : chaque opération compensée,
+    /// plus une ligne d'épargne négative pour ce qui est payé avec la carte d'un compte de placement (règle 8 du 14/11/2026).
+    /// À utiliser pour tout total par thème ou par catégorie : la carte Trade Republic sort ainsi de l'épargne partout, une seule fois.
+    static func comptees<S: Sequence>(_ ops: S) -> [Operation] where S.Element == Operation {
+        var r: [Operation] = []
+        for o in ops {
+            r.append(compense(o))
+            let carte = sortieEpargneCarte(o)
+            if carte != 0 {
+                var c = o
+                c.id = "carte-" + o.id; c.cat = .epargne; c.sc = "Investissement"; c.montant = -carte
+                c.note = "Payé avec la carte · " + o.note; c.loyerPartage = false
+                r.append(c)
+            }
+        }
+        return r
     }
 
     struct Bilan {
@@ -53,8 +72,7 @@ enum Calc {
 
     static func bilan<S: Sequence>(_ ops: S) -> Bilan where S.Element == Operation {
         var b = Bilan()
-        for o in ops {
-            let c = compense(o)
+        for c in comptees(ops) {
             switch c.cat {
             case .revenu: b.rev += c.montant; if Ref.revenusReference.contains(c.sc) { b.ref += c.montant }
             case .besoins: b.bes += c.montant
@@ -62,7 +80,6 @@ enum Calc {
             case .epargne: b.epa += c.montant
             case .virement: break
             }
-            b.epa -= sortieEpargneCarte(o)
         }
         return b
     }
@@ -156,7 +173,7 @@ enum Calc {
 
     static func source(_ o: Operation) -> String {
         guard o.sc == "Salaire" else { return o.sc }
-        let nom = Analyse.marchand(o).replacingOccurrences(of: #"\s*\(.*\)$"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        let nom = Analyse.nom(o).replacingOccurrences(of: #"\s*\(.*\)$"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
         return nom.isEmpty ? "Salaire" : nom
     }
     /// Règle 1 : seules les paies du salaire principal (le plus gros sur 6 mois) ouvrent un cycle.

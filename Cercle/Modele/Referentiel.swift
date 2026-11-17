@@ -90,6 +90,17 @@ enum Ref {
         "Retrait d'épargne": ("Livret", .epargne),
         "Vente placement": ("Investissement", .epargne),
     ]
+    /// Noms saisis à la main → nom unifié du marchand (« mcdo » → « McDonald's »), recopié de ALIAS_MARCHANDS du site (app.py).
+    /// Vérifié par CercleTests (noms de marchands identiques au site) : à modifier en même temps que le site.
+    static let aliasMarchands: [String: String] = [
+        "mcdo": "McDonald's", "mc do": "McDonald's", "macdo": "McDonald's", "mc donald's": "McDonald's", "super u": "Super U",
+        "o'tacos": "O'Tacos", "otacos": "O'Tacos", "bk": "Burger King", "crous repas": "Izly · Crous", "crous": "Izly · Crous",
+        "uber": "Uber", "bouygues": "Forfait Bouygues", "5g box": "Box Bouygues", "salle": "Fitness Océane", "icloud": "iCloud+",
+        "apple music": "Apple Music", "prime vidéo": "Amazon Prime", "prime video": "Amazon Prime", "loto": "FDJ", "betclic": "Betclic",
+        "casino": "Casino", "warehouse": "Warehouse", "essence": "Carburant", "trade republic": "Trade Republic",
+        "livret bleu": "Livret Bleu", "elec": "Électricité Alterna", "revolut": "Revolut", "aleop": "Aléop",
+        "gemini pro": "Google One", "bicloo": "Bicloo", "carburant petro-ouest": "Carburant",
+    ]
     static let revenusReference: Set<String> = ["Salaire", "Bourse & aides", "Aide familiale"]   // règle 7
     static let chargesFixes: Set<String> = ["Loyer", "Factures", "Assurances", "Abonnements", "Frais bancaires"]
     static let mouvementsEpargne: Set<String> = ["Livret", "Investissement", "Projet", "Autre épargne", "Retrait d'épargne", "Vente placement"]

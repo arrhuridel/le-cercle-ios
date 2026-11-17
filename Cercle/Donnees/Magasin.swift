@@ -419,15 +419,11 @@ final class Magasin {
     func appliquerPlanifiees() async {
         var nouvelles: [Operation] = []
         for p in planifiees where p.actif {
-            var d = J.date(p.depuis)
-            var k = 0
-            while J.iso(d) <= J.auj && k < 24 {
-                let mois = String(J.iso(d).prefix(7)), cle = "plan:\(p.id):\(mois)"
-                let existe = (ops + nouvelles).contains { $0.idBanque == cle || ($0.sc == p.sc && (p.vers == nil || $0.vers == p.vers) && $0.date.hasPrefix(mois) && abs($0.montant - p.montant) <= max(p.montant * 0.2, 1)) }
-                if !existe { var o = nouvelleOperation(date: J.iso(d), sc: p.sc, montant: p.montant, note: p.note, compte: p.compte, vers: p.vers, source: "auto"); o.idBanque = cle; nouvelles.append(o) }
-                k += 1
-                let c = J.comp(d)
-                d = J.faire(c.a, c.m + 1, p.jour)
+            // Calcul des échéances dans le moteur (Calc.echeancesDues, testé) : la première tombe au jour prévu (décision du 17/11/2026)
+            for e in Calc.echeancesDues(p, ops + nouvelles, jusqua: J.auj) {
+                var o = nouvelleOperation(date: e.date, sc: p.sc, montant: p.montant, note: p.note, compte: p.compte, vers: p.vers, source: "auto")
+                o.idBanque = e.cle
+                nouvelles.append(o)
             }
         }
         if !nouvelles.isEmpty { await ajouter(nouvelles) }

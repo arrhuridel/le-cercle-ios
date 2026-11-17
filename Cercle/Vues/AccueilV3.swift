@@ -65,7 +65,7 @@ struct ResumeV3 {
         struct Ligne: Hashable { let nom: String; let montant: Double }
     }
     var familles: [Famille] {
-        let comp = t.opsP.map(Calc.compense), ref = t.b.ref
+        let comp = Calc.comptees(t.opsP), ref = t.b.ref
         return [(Cat.besoins, "bes", "Besoins", 50.0, t.b.bes), (.envies, "env", "Envies", 30, t.b.env), (.epargne, "epa", "Épargne", 20, t.b.epa)].map { cat, k, nom, cible, dep in
             let parSc = Dictionary(grouping: comp.filter { $0.cat == cat }, by: \.sc).mapValues { $0.reduce(0) { $0 + $1.montant } }
             let cats = parSc.filter { abs($0.value) >= 0.5 }.sorted { $0.value > $1.value }.prefix(6).map { Famille.Ligne(nom: $0.key, montant: $0.value) }

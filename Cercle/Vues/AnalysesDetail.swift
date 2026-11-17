@@ -91,7 +91,7 @@ extension Magasin {
             let base: Double = points.reduce(0) { $0 + $1.ref }
             // Le Livret vient des relevés (solde réel, comme le site) ; les autres supports, des versements nets
             let lv: Livrets? = livrets
-            let epargne: [Operation] = ops.map(Calc.compense).filter { o in o.cat == .epargne && (lv == nil || o.sc != "Livret") }
+            let epargne: [Operation] = Calc.comptees(ops).filter { o in o.cat == .epargne && (lv == nil || o.sc != "Livret") }
             let groupes: [String: [Operation]] = Dictionary(grouping: epargne, by: { $0.sc })
             var supports: [AnalyseEpargne.Support] = []
             for (sc, l) in groupes {
@@ -112,7 +112,7 @@ extension Magasin {
         memo("analyse.charges|" + d.rawValue) {
             let ops: [Operation] = toutes
             return d.tranches(ops).map { t in
-                let l: [Operation] = Calc.entre(ops, t.debut, t.fin).map(Calc.compense).filter { $0.cat.estDepense }
+                let l: [Operation] = Calc.comptees(Calc.entre(ops, t.debut, t.fin)).filter { $0.cat.estDepense }
                 let fixes: Double = l.filter { Ref.chargesFixes.contains($0.sc) }.reduce(0) { $0 + $1.montant }
                 let courantes: Double = l.filter { !Ref.chargesFixes.contains($0.sc) }.reduce(0) { $0 + $1.montant }
                 return PointCharges(cle: t.cle, libelle: t.libelle, fixes: fixes, courantes: courantes)

@@ -30,7 +30,7 @@ struct ResteReel {
     static let libellesAutres = ["Remboursement loyer": "Remboursement du loyer (coloc)", "Retrait d'épargne": "Retrait d'un livret",
                                  "Virement interne": "Virements entre tes comptes", "Remboursement": "Remboursements", "Cadeau reçu": "Cadeaux reçus"]
 
-    init(ops: [Operation], periode: Calc.Periode, revenusDuMois: Double, soldeInitial: Double) {
+    init(ops: [Operation], periode: Calc.Periode, revenusDuMois: Double, soldeInitial: Double, planifiees: [Planifiee] = []) {
         debut = periode.debut; fin = periode.finBudget
         let auj = J.auj
         let cc = ops.filter { $0.date <= auj }.map { (o: $0, e: (Calc.effet($0, "") * 100).rounded() / 100) }.filter { abs($0.e) > 0.004 }
@@ -75,6 +75,13 @@ struct ResteReel {
             if d <= auj { d = J.iso(J.faire(c.a, c.m + 1, p.jour)) }
             if d <= fin { aVenir.append(Ligne(nom: p.variable ? p.nom + " (environ)" : p.nom, montant: p.montant, detail: d)) }
         }
+        // Virements programmés qui partiront du compte courant avant la fin du cycle (ex. 120 vers Trade Republic le 30),
+        // comme la web app (décision d'Arthur du 17/11/2026)
+        for p in planifiees where p.actif && p.compte.isEmpty {
+            guard let d = Calc.prochaineEcheance(p, apres: auj), d <= fin else { continue }
+            let vers = p.vers ?? ""
+            aVenir.append(Ligne(nom: vers.isEmpty ? (p.note.isEmpty ? p.sc : p.note) : "Virement vers \(vers)", montant: p.montant, detail: d))
+        }
         aVenir = aVenir.sorted { $0.detail < $1.detail }.map { Ligne(nom: $0.nom, montant: $0.montant, detail: J.court($0.detail)) }
         let passes = max(J.ecart(debut, auj) + 1, 1)
         restants = max(J.ecart(auj, fin) + 1, 1); joursApres = max(J.ecart(auj, fin), 0)
@@ -91,7 +98,7 @@ extension Magasin {
     var resteReel: ResteReel {
         memo("resteReel") {
             let t = tableau(mode: .paie)
-            return ResteReel(ops: ops, periode: t.per, revenusDuMois: t.b.ref, soldeInitial: soldesInitiaux[""] ?? 0)
+            return ResteReel(ops: ops, periode: t.per, revenusDuMois: t.b.ref, soldeInitial: soldesInitiaux[""] ?? 0, planifiees: planifiees)
         }
     }
 }

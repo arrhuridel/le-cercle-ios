@@ -370,7 +370,7 @@ struct PocheDetailView: View {
             .padding(16).frame(maxWidth: .infinity, alignment: .leading).carteTeintee(p.couleur)
             TitreSection(texte: "Mouvements · \(tr.mouvements.count)").padding(.top, 8)
             let lignes = tr.mouvements.map { o in
-                Plan.Ligne(id: o.id, date: o.date, titre: o.note.isEmpty ? o.sc : Analyse.marchand(o),
+                Plan.Ligne(id: o.id, date: o.date, titre: o.note.isEmpty ? o.sc : Analyse.nom(o),
                            sc: Calc.famillePlacement(o) == "PEA" && o.sc == "Investissement" ? "PEA" : o.sc,
                            montant: Calc.effet(o, "Trade Republic"), payeAvec: nil, moitie: false, op: o)
             }

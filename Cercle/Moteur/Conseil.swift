@@ -68,7 +68,7 @@ enum Conseil {
         let mois = Calc.moisDerniers(n), debut = mois.first!.debut
         let opsP = Calc.entre(ops, debut, J.auj)
         let nbMois = max(Double(J.ecart(debut, J.auj) + 1) / Ref.joursParMois, 1)
-        let dep = opsP.map(Calc.compense).filter { $0.cat.estDepense }
+        let dep = Calc.comptees(opsP).filter { $0.cat.estDepense }
         guard !dep.isEmpty else { return [Note(symbole: "info.circle", texte: "Pas encore assez d'opérations pour en tirer des enseignements.")] }
         var l: [Note] = []
         let cour = Calc.courantes(opsP).reduce(0) { $0 + $1.montant }
@@ -145,12 +145,12 @@ enum Conseil {
         let rev = mois.reduce(0) { $0 + $1.b.rev }, dep = mois.reduce(0) { $0 + $1.b.dep }, epa = mois.reduce(0) { $0 + $1.b.epa }
         let depMoy = dep / nb, taux = rev > 0 ? epa / rev : 0
         let respectes = mois.filter { $0.b.dep <= budgetMensuel }.count
-        let livret = t.livret ?? max(t.ops.map(Calc.compense).filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }, 0)
+        let livret = t.livret ?? max(Calc.comptees(t.ops).filter { $0.sc == "Livret" }.reduce(0) { $0 + $1.montant }, 0)
         let reserve = (t.soldeAuj + livret) / max(depMoy, 1)
-        let fixes = mois.reduce(0) { r, m in r + Calc.entre(t.ops, m.mois.debut, m.mois.fin).map(Calc.compense).filter { $0.cat.estDepense && Ref.chargesFixes.contains($0.sc) }.reduce(0) { $0 + $1.montant } } / nb
+        let fixes = mois.reduce(0) { r, m in r + Calc.comptees(Calc.entre(t.ops, m.mois.debut, m.mois.fin)).filter { $0.cat.estDepense && Ref.chargesFixes.contains($0.sc) }.reduce(0) { $0 + $1.montant } } / nb
         let partFixes = rev > 0 ? fixes / (rev / nb) : 1
         let ecart = sqrt(mois.reduce(0) { $0 + pow($1.b.dep - depMoy, 2) } / nb), cv = depMoy > 0 ? ecart / depMoy : 1
-        let jeux = t.ops.map(Calc.compense).filter { $0.sc == "Jeux d'argent" }.reduce(0) { $0 + $1.montant }
+        let jeux = Calc.comptees(t.ops).filter { $0.sc == "Jeux d'argent" }.reduce(0) { $0 + $1.montant }
         func lim(_ x: Double, _ a: Double, _ b: Double) -> Double { max(0, min(1, (x - a) / (b - a))) }
         let c = [
             Critere(nom: "Taux d'épargne", max: 25, points: 25 * lim(taux, 0, 0.2), detail: "\(Fmt.pct(taux * 100)) des revenus épargnés (cible 20 %)", conseil: "Programme un virement vers le livret le jour de la paie."),
@@ -191,5 +191,11 @@ enum Analyse {
         let brut = o.note.components(separatedBy: " · ").first ?? ""
         let m = brut.replacingOccurrences(of: #"\s*\(\d+ achats\)$"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
         return m.isEmpty ? o.sc : m.prefix(1).uppercased() + m.dropFirst()
+    }
+    /// Nom unifié du marchand, comme `marchand_de` du site (« mcdo » → « McDonald's ») : pour afficher et regrouper.
+    /// (`marchand` reste le nom brut, utilisé pour reconnaître une dépense à partir de son libellé.)
+    static func nom(_ o: Operation) -> String {
+        let m = marchand(o)
+        return Ref.aliasMarchands[m.lowercased()] ?? m
     }
 }
