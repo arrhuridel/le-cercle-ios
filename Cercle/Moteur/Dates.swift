@@ -20,7 +20,9 @@ enum J {
     static let moisCourts = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
     static let jours = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"]
 
-    static var aujourdhui: Date { cal.startOfDay(for: Date()) }
+    /// Jour imposé par les tests (CercleTests) pour retrouver les chiffres du site ; toujours nil dans l'app.
+    static var fixe: Date? = nil
+    static var aujourdhui: Date { cal.startOfDay(for: fixe ?? Date()) }
     static var auj: String { iso(aujourdhui) }
     static func iso(_ d: Date) -> String { fmt.string(from: d) }
     static func date(_ s: String) -> Date { fmt.date(from: String(s.prefix(10))) ?? aujourdhui }

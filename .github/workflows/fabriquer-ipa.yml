@@ -18,7 +18,7 @@ concurrency:                # un nouvel envoi annule la fabrication précédente
 jobs:
   ipa:
     runs-on: macos-26
-    timeout-minutes: 40
+    timeout-minutes: 60     # tests (simulateur) puis fabrication : deux compilations complètes
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v5
@@ -33,6 +33,33 @@ jobs:
 
       - name: Générer le projet Xcode depuis project.yml
         run: xcodegen generate
+
+      # Tests du moteur (piste A du 17/11/2026) : l'app doit retrouver les chiffres du site sur des données inventées.
+      # Un test qui échoue arrête tout ici : l'app n'est pas fabriquée. Aucun secret n'est utilisé.
+      - name: Tester le moteur (mêmes chiffres que le site)
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          print(next(x["udid"] for k in sorted(d, reverse=True) if "iOS" in k for x in d[k] if x["name"].startswith("iPhone")))')
+          echo "Simulateur : $UDID"
+          xcodebuild test \
+            -project Cercle.xcodeproj \
+            -scheme Cercle \
+            -destination "id=$UDID" \
+            -derivedDataPath build-tests \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            > test.log 2>&1 || {
+              # Chaque test raté devient une annotation lisible sur la page de la fabrication
+              grep -E ": error: |Test Case .* failed" test.log | sort -u | head -40 | while IFS= read -r l; do
+                echo "::error::${l##*/}"
+              done
+              tail -n 80 test.log
+              exit 1
+            }
+          grep -E "Test Case .*(passed|failed)|Executed|expected failure" test.log | tail -n 40
 
       # L'adresse de la base et sa clé publique viennent des secrets du dépôt : elles ne sont jamais dans le code.
       # (La clé publique est faite pour être dans une app : les règles de la base la rendent inoffensive.)

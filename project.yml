@@ -49,4 +49,21 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: fr.lecercle.app
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: NO
+    # Tests du moteur lancés par GitHub (workflow fabriquer-ipa.yml) avant chaque fabrication.
+    scheme:
+      testTargets:
+        - CercleTests
+  # Le moteur doit retrouver les chiffres du site (piste A du 17/11/2026), sur des données inventées.
+  # donnees_python.json est fabriqué par site_web/fabriquer_reference.py : ne pas le modifier à la main.
+  CercleTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - CercleTests
+    dependencies:
+      - target: Cercle
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fr.lecercle.app.tests
+        GENERATE_INFOPLIST_FILE: YES
 
