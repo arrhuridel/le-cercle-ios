@@ -176,6 +176,7 @@ struct MonEspaceView: View {
                 CarteVerre(espacement: 12) {
                     NavigationLink("Données : import, capture, règles, sauvegarde") { DonneesView() }
                     NavigationLink("Membres du Cercle") { MembresView() }
+                    NavigationLink("Amis : inviter, ajouter, mes réponses") { AmisView() }
                 }
                 .tint(.primary)
                 Button(magasin.etat == .demo ? "Quitter le mode démo" : "Se déconnecter", role: .destructive) {

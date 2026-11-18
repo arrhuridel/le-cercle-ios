@@ -319,6 +319,19 @@ final class Magasin {
 
     // MARK: Écritures (base + copie locale ; en démo, en mémoire seulement)
 
+    /// Appel d'une fonction de la base qui renvoie un texte (code d'invitation, code d'ami, prénom de l'ami ajouté).
+    /// Renvoie le texte, ou le message de la base (déjà en français) en cas de refus.
+    func appelTexte(_ nom: String, _ params: [String: String] = [:]) async -> (texte: String?, erreur: String?) {
+        guard etat == .connecte, let client else { return (nil, "Pas disponible en mode démo.") }
+        do {
+            let t: String = params.isEmpty ? try await client.rpc(nom).execute().value
+                                           : try await client.rpc(nom, params: params).execute().value
+            return (t, nil)
+        } catch {
+            return (nil, (error as? PostgrestError)?.message ?? "Pas de réseau ou refus : réessaie.")
+        }
+    }
+
     private func envoyer(_ action: @escaping (SupabaseClient) async throws -> Void) async -> Bool {
         guard etat == .connecte else { return true }
         guard let client else { return false }
