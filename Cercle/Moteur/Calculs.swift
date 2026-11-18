@@ -9,7 +9,9 @@ enum Calc {
     /// l'épargne compte le jour du virement depuis le compte courant (un retour vers le compte courant la réduit) ;
     /// les achats, ventes et versements PEA faits sur le compte n'en sont que le détail (0 dans les calculs) ;
     /// ce qui est payé avec la carte reste une dépense et sort aussi de l'épargne (`sortieEpargneCarte`).
-    static let comptesPlacement: Set<String> = ["Trade Republic"]
+    /// Paramètres de la personne connectée (réponses du questionnaire), appliqués par le Magasin au chargement du profil.
+    static var parametres = Parametres.defaut
+    static var comptesPlacement: Set<String> { parametres.comptesPlacement }
     static func sortieEpargneCarte(_ o: Operation) -> Double { comptesPlacement.contains(o.compte) && o.cat.estDepense ? o.montant : 0 }
 
     static func compense(_ o: Operation) -> Operation {
@@ -35,6 +37,8 @@ enum Calc {
     /// Écart compté en jours de calendrier, pas en secondes : un changement d'heure entre les deux ne change rien.
     /// Un loyer payé seul, sans remboursement autour, reste entier.
     static func marquerLoyers(_ ops: [Operation]) -> [Operation] {
+        // Sans colocataire qui rembourse (réponse du questionnaire) : aucun loyer n'est réduit
+        guard parametres.loyerPartage else { return ops.map { var c = $0; c.loyerPartage = false; return c } }
         var remb: [String: [String]] = [:]
         for o in ops where o.sc == "Remboursement loyer" { remb[o.profilId, default: []].append(o.date) }
         guard !remb.isEmpty else { return ops }
@@ -119,9 +123,10 @@ enum Calc {
         let p: (Double) -> Double = { base > 0 ? $0 / base * 100 : 0 }
         let parts: [Cat: Double] = [.besoins: p(b.bes), .envies: p(b.env), .epargne: p(b.epa)]
         var a: [String] = []
-        if parts[.besoins]! > 55 { a.append("besoins trop élevés") }
-        if parts[.envies]! > 35 { a.append("envies trop élevées") }
-        if parts[.epargne]! < 15 { a.append("épargne insuffisante") }
+        let c = parametres.cibles, t = parametres.tolerance   // la règle de la personne (questionnaire)
+        if parts[.besoins]! > (c[.besoins] ?? 50) + t { a.append("besoins trop élevés") }
+        if parts[.envies]! > (c[.envies] ?? 30) + t { a.append("envies trop élevées") }
+        if parts[.epargne]! < (c[.epargne] ?? 20) - t { a.append("épargne insuffisante") }
         return Regle(parts: parts, alertes: a, base: base)
     }
 

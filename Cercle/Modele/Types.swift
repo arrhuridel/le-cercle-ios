@@ -49,11 +49,13 @@ struct Profil: Codable, Hashable {
     var reglesImport: [String: [String]]?
     /// Relevés des livrets enregistrés par le site : nom du livret → lignes [date, montant, solde, libellé]
     var avoirs: [String: Avoir]?
+    /// Réponses du questionnaire (base v20) : paramètres des calculs (Moteur/Parametres.swift)
+    var reglages: Reglages? = nil
     enum CodingKeys: String, CodingKey {
-        case id, prenom, visibilite, avoirs
+        case id, prenom, visibilite, avoirs, reglages
         case budget = "budget_mensuel_max", objectifEpargne = "objectif_epargne", reglesImport = "regles_import"
     }
-    static let colonnes = "id,prenom,visibilite,budget_mensuel_max,objectif_epargne,regles_import,avoirs"
+    static let colonnes = "id,prenom,visibilite,budget_mensuel_max,objectif_epargne,regles_import,avoirs,reglages"
 
     init(id: String, prenom: String, visibilite: String, budget: Double, objectifEpargne: Double, reglesImport: [String: [String]]? = nil, avoirs: [String: Avoir]? = nil) {
         self.id = id; self.prenom = prenom; self.visibilite = visibilite; self.budget = budget; self.objectifEpargne = objectifEpargne
@@ -69,6 +71,7 @@ struct Profil: Codable, Hashable {
         objectifEpargne = (try? c.decode(Double.self, forKey: .objectifEpargne)) ?? 0
         reglesImport = try? c.decodeIfPresent([String: [String]].self, forKey: .reglesImport)
         avoirs = try? c.decodeIfPresent([String: Avoir].self, forKey: .avoirs)
+        reglages = try? c.decodeIfPresent(Reglages.self, forKey: .reglages)
     }
 }
 

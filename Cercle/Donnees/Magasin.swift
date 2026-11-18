@@ -153,6 +153,7 @@ final class Magasin {
 
     /// Remet l'app à zéro (sortie du mode démo, déconnexion, nouvelle connexion) : rien ne doit passer d'un compte à l'autre.
     private func viderTout() {
+        Calc.parametres = .defaut
         profil = nil; ops = []; groupes = []; enveloppes = []; objectifs = []; planifiees = []; mouvements = []; membres = []; cours = []
         soldesInitiaux = [:]; erreur = nil; horsLigne = false; sessionExpiree = false
     }
@@ -300,6 +301,7 @@ final class Magasin {
                                                   depenses: deps.filter { $0.groupeId == g.id }, reglements: regs.filter { $0.groupeId == g.id }) }
             }
             // Tout est lu : on remplace d'un coup (jamais un état à moitié chargé)
+            Calc.parametres = Parametres(p.reglages)   // avant les opérations : les loyers sont marqués selon les réponses
             profil = p; ops = toutes; enveloppes = env; objectifs = obj; planifiees = pla; mouvements = mvt; cours = crs; membres = mbr; groupes = grp; connexions = cnx
             // Corrections déjà apprises sur le site : elles deviennent des règles de l'app
             for (cle, v) in p.reglesImport ?? [:] where v.count == 2 && !regles.contains(where: { $0.motif == cle }) {

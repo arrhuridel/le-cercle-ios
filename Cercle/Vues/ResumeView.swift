@@ -231,10 +231,10 @@ struct BudgetVue: View {
         }
         let rg = Calc.regle(t.b)
         CarteVerre(espacement: 10) {
-            Text("Règle 50-30-20").font(.headline)
+            Text("Règle \(Calc.parametres.nom)").font(.headline)
             Text("Calculée sur salaire, aides et aide familiale : \(Fmt.eur(rg.base, 0))").font(.footnote).foregroundStyle(.secondary)
             ForEach([(Cat.besoins, "Besoins", Color(red: 0.5, green: 0.61, blue: 0.76)), (.envies, "Envies", Color(red: 0.76, green: 0.6, blue: 0.43)), (.epargne, "Épargne", Color.positif)], id: \.1) { c, nom, couleur in
-                let p = rg.parts[c] ?? 0, cible = Ref.cibles[c] ?? 0
+                let p = rg.parts[c] ?? 0, cible = Calc.parametres.cibles[c] ?? 0
                 VStack(spacing: 4) {
                     HStack { Text(nom); Text("· cible \(Int(cible)) %").foregroundStyle(.secondary); Spacer(); Text(Fmt.pct(p)) }.font(.subheadline)
                     Jauge(part: p, couleur: couleur, repere: cible, hauteur: 6)

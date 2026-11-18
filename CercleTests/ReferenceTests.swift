@@ -50,6 +50,17 @@ final class ReferenceTests: XCTestCase {
         let marchands: [String: String]
         let marchand_depenses: [String: Double]
         let cas: Cas
+        let regle_total: RegleRef
+        let profil_b: ProfilB
+    }
+    private struct RegleRef: Decodable { let parts: [String: Double]; let alertes: [String] }
+    /// Profil B (partie 3, 18/11/2026) : vit seul, règle 60-20-20, sans compte de placement.
+    private struct ProfilB: Decodable {
+        let reglages: Reglages
+        let loyer_partage: [String: Bool]
+        let bilan_total: [String: Double]
+        let theme_total: [String: Double]
+        let regle: RegleRef
     }
 
     private var ref: Reference!
@@ -61,11 +72,13 @@ final class ReferenceTests: XCTestCase {
                                 "donnees_python.json absent des ressources de test")
         ref = try JSONDecoder().decode(Reference.self, from: Data(contentsOf: url))
         J.fixe = J.date(ref.auj)
+        Calc.parametres = .defaut
         ops = Calc.marquerLoyers(ref.operations)
     }
 
     override func tearDown() {
         J.fixe = nil
+        Calc.parametres = .defaut
         super.tearDown()
     }
 
@@ -154,6 +167,42 @@ final class ReferenceTests: XCTestCase {
         var pm: [String: Double] = [:]
         for o in ops { let c = Calc.compense(o); if c.cat.estDepense { pm[Analyse.nom(o), default: 0] += c.montant } }
         verifier(ecarts(pm.filter { ref.marchand_depenses[$0.key] != nil }, ref.marchand_depenses), "dépenses par marchand")
+    }
+
+    // MARK: Calculs adaptés aux réponses (partie 3)
+
+    private func partsEnTableau(_ rg: Calc.Regle) -> [String: Double] {
+        [Cat.besoins.rawValue: rg.parts[.besoins] ?? 0, Cat.envies.rawValue: rg.parts[.envies] ?? 0, Cat.epargne.rawValue: rg.parts[.epargne] ?? 0]
+    }
+
+    func testRegleDuProfilPrincipal() {
+        let rg = Calc.regle(Calc.bilan(ops))
+        verifier(ecarts(partsEnTableau(rg), ref.regle_total.parts), "parts de la règle")
+        XCTAssertEqual(rg.alertes, ref.regle_total.alertes)
+    }
+
+    func testProfilB() {
+        let b = ref.profil_b
+        Calc.parametres = Parametres(b.reglages)
+        XCTAssertEqual(Calc.parametres.nom, "60-20-20")
+        XCTAssertTrue(Calc.parametres.comptesPlacement.isEmpty, "aucun compte de placement")
+        let opsB = Calc.marquerLoyers(ref.operations)
+        XCTAssertFalse(opsB.contains { $0.loyerPartage }, "vit seul : aucun loyer partagé")
+        XCTAssertTrue(opsB.allSatisfy { $0.loyerPartage == (b.loyer_partage[$0.id] ?? false) })
+        verifier(ecarts(versTableau(Calc.bilan(opsB)), b.bilan_total), "profil B : bilan")
+        verifier(ecarts(parTheme(opsB), b.theme_total), "profil B : thèmes")
+        let rg = Calc.regle(Calc.bilan(opsB))
+        verifier(ecarts(partsEnTableau(rg), b.regle.parts), "profil B : parts")
+        XCTAssertEqual(rg.alertes, b.regle.alertes)
+    }
+
+    func testFichePartielleGardeLesDefauts() {
+        let p = Parametres(Reglages(logement: .init(type: "seul", loyer_partage: false)))
+        XCTAssertFalse(p.loyerPartage)
+        XCTAssertEqual(p.nom, "50-30-20")
+        XCTAssertEqual(p.comptesPlacement, ["Trade Republic"])
+        XCTAssertTrue(Parametres(Reglages(banques: [])).comptesPlacement.isEmpty, "aucune banque : aucun placement")
+        XCTAssertEqual(Parametres(nil), Parametres.defaut)
     }
 
     // MARK: Cas pièges

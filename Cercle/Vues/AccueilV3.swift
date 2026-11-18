@@ -175,7 +175,7 @@ struct AccueilView: View {
     private func carteRegle(_ r: ResumeV3) -> some View {
         Button { page = .regle } label: {
             CarteV3 {
-                HStack { Text("Règle 50-30-20").font(.headline); Spacer(); Chevron() }
+                HStack { Text("Règle \(Calc.parametres.nom)").font(.headline); Spacer(); Chevron() }
                 HStack {
                     ForEach(r.familles) { f in
                         VStack(spacing: 6) {
@@ -243,7 +243,7 @@ struct RegleBullesView: View {
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(FondView())
-        .navigationTitle("50-30-20")
+        .navigationTitle(Calc.parametres.nom)
         .sensoryFeedback(.selection, trigger: choisie)
         .sheet(item: $choisie) { fa in
             NavigationStack {
